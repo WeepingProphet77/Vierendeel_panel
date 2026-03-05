@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import './index.css';
-import type { AppInputs, Opening, FrameModel, AnalysisResults, Member } from './types';
+import type { AppInputs, Opening, FrameModel, Member } from './types';
 import { generateFrameModel } from './engine/frameModel';
 import { runAnalysis } from './engine/analysis';
 import InputPanel from './components/InputPanel';

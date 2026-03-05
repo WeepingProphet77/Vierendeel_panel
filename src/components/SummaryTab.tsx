@@ -20,7 +20,6 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
   let govCompressive = { memberId: 0, location: '', stress: 0, ratio: 0 };
 
   for (const s of results.memberStresses) {
-    const member = frameModel.members.find(m => m.id === s.memberId)!;
     for (const [loc, face] of [['start', s.startFace], ['end', s.endFace]] as const) {
       const tRatio = face.maxTensilePsi / fr;
       if (tRatio > govTensile.ratio) {
