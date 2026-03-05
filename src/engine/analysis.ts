@@ -108,7 +108,7 @@ function computeMemberLoads(
   members: Member[],
   nodes: Node[],
   openings: Opening[],
-  panel: PanelGeometry,
+  _panel: PanelGeometry,
   material: MaterialProperties,
   loading: Loading
 ): Map<number, LoadInfo> {
@@ -137,9 +137,6 @@ function computeMemberLoads(
         const oRight = o.centerXFt + o.widthFt / 2;
 
         // Check if this member is the header (above opening) or sill (below opening)
-        const isHeader = memberY > o.centerYFt && Math.abs(memberY - (oTop + (panel.heightFt - oTop) / 2)) < dFt;
-        const isSill = memberY < o.centerYFt && Math.abs(oBot - memberY) < dFt * 2;
-
         // More robust: check if opening edges are within member span
         const openingWithinSpan = oLeft >= memberXStart - 0.01 && oRight <= memberXEnd + 0.01;
 
@@ -505,7 +502,6 @@ export function runAnalysis(
     const P_start = f_total[0]; // axial at start node (tension +)
     const V_start = f_total[1]; // shear at start node
     const M_start = f_total[2]; // moment at start node (ft-kips)
-    const P_end = f_total[3];
     const V_end = f_total[4];
     const M_end = f_total[5];
 
@@ -561,7 +557,6 @@ export function runAnalysis(
     const M_face_end = M_end + V_end * b_off;
 
     // Axial is approximately constant
-    const P = (P_start - P_end) / 2; // average, tension positive (P_start and P_end have opposite signs for axial)
     // Actually in stiffness convention: P_start is the axial at start node (+ = tension pulling away from node)
     // and P_end is at end node (+ = tension pulling away from that node too, which is opposite direction)
     // So the internal axial force in the member = P_start (compression positive at start means force INTO member)
@@ -587,8 +582,7 @@ export function runAnalysis(
     const M_start_kipIn = M_face_start * 12; // ft-kips to kip-in
     const M_end_kipIn = M_face_end * 12;
 
-    const bendingStressStart = Math.abs(M_start_kipIn * 1000) * c / I; // kip-in * 1000 = lb-in, * c / I = psi
-    // Wait: M in kip-in. stress = M * c / I. If M is in kip-in, c in inches, I in in⁴:
+    // M in kip-in. stress = M * c / I. If M is in kip-in, c in inches, I in in⁴:
     // stress = (kip-in * in) / in⁴ = kip/in² = ksi. Need to convert to psi: * 1000
     const bendingStressStartPsi = (Math.abs(M_start_kipIn) * c / I) * 1000;
     const bendingStressEndPsi = (Math.abs(M_end_kipIn) * c / I) * 1000;
@@ -644,7 +638,6 @@ export function runAnalysis(
   }
 
   // Total weights
-  const bFtDefault = panel.defaultThicknessIn / 12;
   let totalSelfWeight = 0;
   let totalGlassWeight = 0;
   let totalSuperimposed = 0;
@@ -669,7 +662,6 @@ export function runAnalysis(
 
   // Equilibrium check
   const totalVerticalReaction = supportReactions.reduce((sum, r) => sum + r.verticalKips, 0);
-  const verticalResidual = totalVerticalReaction + totalWeight; // reactions are upward (+), weight is downward
   // Actually reactions should be positive (upward). Let me check...
   // The F vector has downward loads (negative Fy). Reactions = K*d - F = upward forces at supports.
   // So totalVerticalReaction should be approximately equal to totalWeight in magnitude.
@@ -685,7 +677,6 @@ export function runAnalysis(
   const equilibriumVertical = totalVerticalReaction + appliedVertical;
 
   // Moment equilibrium about left support
-  const leftSupportX = nodes.find(n => n.restraints.dx)?.x ?? 0;
   let momentResidual = 0;
   // This is complex to compute accurately - skip detailed moment check for now
   // Just report the vertical residual

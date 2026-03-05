@@ -1,19 +1,5 @@
 import type { PanelGeometry, Opening, Supports, Node, Member, FrameModel } from '../types';
 
-interface Strip {
-  start: number; // ft
-  end: number;   // ft
-  depth: number; // ft (perpendicular to span)
-}
-
-interface JointBlock {
-  left: number;
-  right: number;
-  bottom: number;
-  top: number;
-  nodeId: number;
-}
-
 export function generateFrameModel(
   panel: PanelGeometry,
   openings: Opening[],
@@ -528,8 +514,6 @@ export function generateFrameModel(
   // Remove any duplicate/overlapping horizontal members on the bottom strip
   // This happens when the support connector replaces part of an existing member
   // Clean up: ensure no two horizontal members on the bottom strip share the same start/end pair
-  const bottomMembers = members.filter(m => m.orientation === 'horizontal' && Math.abs(nodes.find(n => n.id === m.startNodeId)!.y - bottomStripY) < 0.001);
-
   // Apply thickness overrides from existing members (matching by label)
   if (existingMembers) {
     for (const member of members) {

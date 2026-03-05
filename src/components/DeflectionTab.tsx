@@ -51,7 +51,7 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
   const svgWidth = viewBox.width * scale;
   const svgHeight = viewBox.height * scale;
 
-  const getNode = (id: number): Node => nodes.find(n => n.id === id)!;
+  const getNode = (id: number) => nodes.find(n => n.id === id)!;
 
   // Interpolate deformed panel outline
   // Bottom edge nodes (sorted by x), top edge nodes, left edge, right edge
