@@ -9,14 +9,13 @@ interface Props {
 
 export default function DeflectionTab({ frameModel, results, inputs }: Props) {
   if (!results) {
-    return <div className="text-[#8899aa] text-sm">No analysis results available.</div>;
+    return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available.</div>;
   }
 
   const { nodes, members } = frameModel;
   const nodeIndex = new Map<number, number>();
   nodes.forEach((n, i) => nodeIndex.set(n.id, i));
 
-  // Auto-compute a reasonable default scale factor
   const maxDisp = Math.max(
     ...nodes.map(n => {
       const ni = nodeIndex.get(n.id)! * 3;
@@ -26,7 +25,7 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
     })
   );
 
-  const targetDisp = inputs.panel.heightFt * 0.07; // 7% of panel height
+  const targetDisp = inputs.panel.heightFt * 0.07;
   const autoScale = maxDisp > 0 ? targetDisp / maxDisp : 100;
   const defaultScale = Math.round(autoScale);
 
@@ -53,11 +52,7 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
 
   const getNode = (id: number) => nodes.find(n => n.id === id)!;
 
-  // Interpolate deformed panel outline
-  // Bottom edge nodes (sorted by x), top edge nodes, left edge, right edge
   const deformedCorners = useMemo(() => {
-    // Panel corners displaced by interpolating from nearest nodes
-    // Simple approach: find nodes at corners or closest to corners
     const corners = [
       { x: 0, y: 0 },
       { x: inputs.panel.widthFt, y: 0 },
@@ -66,7 +61,6 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
     ];
 
     return corners.map(c => {
-      // Find nearest node
       let minDist = Infinity;
       let nearestNodeId = nodes[0]?.id ?? 0;
       for (const n of nodes) {
@@ -78,7 +72,6 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
     });
   }, [nodes, results, scaleFactor, inputs.panel]);
 
-  // Deformed opening outlines
   const deformedOpenings = useMemo(() => {
     return inputs.openings.map(o => {
       const corners = [
@@ -103,8 +96,8 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
   return (
     <div>
       {/* Scale slider */}
-      <div className="flex items-center gap-3 mb-4 p-3 bg-[#16213e] rounded border border-[#2a3a5c]">
-        <label className="text-xs text-[#8899aa]">Displacement Scale:</label>
+      <div className="flex items-center gap-3 mb-4 p-3 rounded" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+        <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Displacement Scale:</label>
         <input
           type="range"
           min={1}
@@ -113,21 +106,21 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
           onChange={e => setScaleFactor(parseInt(e.target.value))}
           className="flex-1"
         />
-        <span className="text-xs text-[#c0c8d0] w-16 text-right">{scaleFactor}x</span>
+        <span className="text-xs w-16 text-right" style={{ color: 'var(--text-primary)' }}>{scaleFactor}x</span>
       </div>
 
       {/* Max deflection info */}
-      <div className="mb-4 p-3 bg-[#16213e] rounded border border-[#2a3a5c] text-xs text-[#8899aa]">
-        <span className="font-semibold text-[#c0c8d0]">Max Vertical Deflection: </span>
+      <div className="mb-4 p-3 rounded text-xs" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+        <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>Max Vertical Deflection: </span>
         {results.maxDeflection.valueIn.toFixed(4)} in at Node {results.maxDeflection.nodeId}
-        <span className="ml-4 text-[#667788]">
+        <span className="ml-4" style={{ color: 'var(--text-tertiary)' }}>
           (L/{Math.abs(results.maxDeflection.valueIn) > 0 ?
-            Math.round(inputs.panel.widthFt * 12 / Math.abs(results.maxDeflection.valueIn)) : '∞'})
+            Math.round(inputs.panel.widthFt * 12 / Math.abs(results.maxDeflection.valueIn)) : '\u221E'})
         </span>
       </div>
 
       {/* SVG */}
-      <div className="bg-[#0f1629] rounded border border-[#2a3a5c] overflow-auto flex justify-center">
+      <div className="rounded overflow-auto flex justify-center" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)' }}>
         <svg
           width={svgWidth}
           height={svgHeight}
@@ -138,7 +131,7 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
             <rect
               x={0} y={0}
               width={inputs.panel.widthFt} height={inputs.panel.heightFt}
-              fill="none" stroke="#2a3a5c" strokeWidth={1 / scale} strokeDasharray={`${4 / scale}`}
+              fill="none" stroke="var(--svg-ghost)" strokeWidth={1 / scale} strokeDasharray={`${4 / scale}`}
             />
             {inputs.openings.map((o, i) => (
               <rect
@@ -146,7 +139,7 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
                 x={o.centerXFt - o.widthFt / 2}
                 y={o.centerYFt - o.heightFt / 2}
                 width={o.widthFt} height={o.heightFt}
-                fill="none" stroke="#2a3a5c" strokeWidth={0.8 / scale} strokeDasharray={`${3 / scale}`}
+                fill="none" stroke="var(--svg-ghost)" strokeWidth={0.8 / scale} strokeDasharray={`${3 / scale}`}
               />
             ))}
 
@@ -157,7 +150,7 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
               return (
                 <line key={m.id}
                   x1={sn.x} y1={sn.y} x2={en.x} y2={en.y}
-                  stroke="#2a3a5c" strokeWidth={1.5 / scale}
+                  stroke="var(--svg-ghost)" strokeWidth={1.5 / scale}
                 />
               );
             })}
@@ -166,7 +159,7 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
             {deformedCorners.length === 4 && (
               <polygon
                 points={deformedCorners.map(c => `${c.x},${c.y}`).join(' ')}
-                fill="#4a9eff" fillOpacity={0.08} stroke="#4a9eff" strokeWidth={1.2 / scale}
+                fill="var(--svg-deformed-panel-fill)" fillOpacity={0.08} stroke="var(--svg-deformed-panel-fill)" strokeWidth={1.2 / scale}
               />
             )}
 
@@ -175,7 +168,7 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
               <polygon
                 key={i}
                 points={corners.map(c => `${c.x},${c.y}`).join(' ')}
-                fill="#0f1629" stroke="#4a9eff" strokeWidth={0.8 / scale}
+                fill="var(--svg-deformed-opening-fill)" stroke="#4a9eff" strokeWidth={0.8 / scale}
               />
             ))}
 

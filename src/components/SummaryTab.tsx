@@ -9,13 +9,12 @@ interface Props {
 
 export default function SummaryTab({ frameModel, results, inputs }: Props) {
   if (!results) {
-    return <div className="text-[#8899aa] text-sm">No analysis results available.</div>;
+    return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available.</div>;
   }
 
   const fr = 7.5 * Math.sqrt(inputs.material.fcPsi);
   const fc_limit = 0.60 * inputs.material.fcPsi;
 
-  // Find governing stresses
   let govTensile = { memberId: 0, location: '', stress: 0, ratio: 0 };
   let govCompressive = { memberId: 0, location: '', stress: 0, ratio: 0 };
 
@@ -32,7 +31,6 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
     }
   }
 
-  // Sorted by max stress ratio
   const sortedMembers = [...results.memberStresses].sort((a, b) => {
     const aMax = Math.max(
       a.startFace.maxTensilePsi / fr, a.endFace.maxTensilePsi / fr,
@@ -97,21 +95,21 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
     <div>
       {/* Weight Summary */}
       <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="p-3 bg-[#16213e] rounded border border-[#2a3a5c]">
-          <h3 className="text-sm font-semibold text-[#8899aa] mb-2">Applied Loads</h3>
-          <div className="space-y-1 text-xs text-[#c0c8d0]">
+        <div className="p-3 rounded" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+          <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Applied Loads</h3>
+          <div className="space-y-1 text-xs" style={{ color: 'var(--text-primary)' }}>
             <div className="flex justify-between"><span>Self-Weight:</span><span>{results.totalWeight.selfWeight.toFixed(3)} kips</span></div>
             <div className="flex justify-between"><span>Glass Weight:</span><span>{results.totalWeight.glassWeight.toFixed(3)} kips</span></div>
             <div className="flex justify-between"><span>Superimposed DL:</span><span>{results.totalWeight.superimposedWeight.toFixed(3)} kips</span></div>
-            <div className="flex justify-between border-t border-[#2a3a5c] pt-1 font-semibold">
+            <div className="flex justify-between pt-1 font-semibold" style={{ borderTop: '1px solid var(--border)' }}>
               <span>Total:</span><span>{results.totalWeight.total.toFixed(3)} kips</span>
             </div>
           </div>
         </div>
 
-        <div className="p-3 bg-[#16213e] rounded border border-[#2a3a5c]">
-          <h3 className="text-sm font-semibold text-[#8899aa] mb-2">Support Reactions</h3>
-          <div className="space-y-1 text-xs text-[#c0c8d0]">
+        <div className="p-3 rounded" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+          <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Support Reactions</h3>
+          <div className="space-y-1 text-xs" style={{ color: 'var(--text-primary)' }}>
             {results.reactions.map(r => (
               <div key={r.nodeId} className="flex justify-between">
                 <span>{r.label}:</span>
@@ -124,35 +122,37 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
 
       {/* Key Results */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="p-3 bg-[#16213e] rounded border border-[#2a3a5c]">
-          <h3 className="text-xs font-semibold text-[#8899aa] mb-1">Max Deflection</h3>
-          <div className="text-lg font-bold text-[#4a9eff]">{results.maxDeflection.valueIn.toFixed(4)}"</div>
-          <div className="text-xs text-[#667788]">Node {results.maxDeflection.nodeId}</div>
+        <div className="p-3 rounded" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+          <h3 className="text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>Max Deflection</h3>
+          <div className="text-lg font-bold" style={{ color: 'var(--accent)' }}>{results.maxDeflection.valueIn.toFixed(4)}"</div>
+          <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Node {results.maxDeflection.nodeId}</div>
         </div>
 
-        <div className={`p-3 rounded border ${govTensile.ratio > 1 ? 'bg-yellow-900/20 border-yellow-700' : 'bg-[#16213e] border-[#2a3a5c]'}`}>
-          <h3 className="text-xs font-semibold text-[#8899aa] mb-1">Governing Tensile Stress</h3>
+        <div className={`p-3 rounded border ${govTensile.ratio > 1 ? 'bg-yellow-900/20 border-yellow-700' : ''}`}
+          style={govTensile.ratio <= 1 ? { background: 'var(--bg-input)', border: '1px solid var(--border)' } : undefined}>
+          <h3 className="text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>Governing Tensile Stress</h3>
           <div className={`text-lg font-bold ${govTensile.ratio > 1 ? 'text-yellow-400' : 'text-green-400'}`}>
             {govTensile.stress.toFixed(0)} psi
           </div>
-          <div className="text-xs text-[#667788]">
+          <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
             Member {govTensile.memberId}, {govTensile.location} ({(govTensile.ratio * 100).toFixed(0)}% of f_r)
           </div>
         </div>
 
-        <div className={`p-3 rounded border ${govCompressive.ratio > 1 ? 'bg-red-900/20 border-red-700' : 'bg-[#16213e] border-[#2a3a5c]'}`}>
-          <h3 className="text-xs font-semibold text-[#8899aa] mb-1">Governing Compressive Stress</h3>
+        <div className={`p-3 rounded border ${govCompressive.ratio > 1 ? 'bg-red-900/20 border-red-700' : ''}`}
+          style={govCompressive.ratio <= 1 ? { background: 'var(--bg-input)', border: '1px solid var(--border)' } : undefined}>
+          <h3 className="text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>Governing Compressive Stress</h3>
           <div className={`text-lg font-bold ${govCompressive.ratio > 1 ? 'text-red-400' : 'text-green-400'}`}>
             {govCompressive.stress.toFixed(0)} psi
           </div>
-          <div className="text-xs text-[#667788]">
+          <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
             Member {govCompressive.memberId}, {govCompressive.location} ({(govCompressive.ratio * 100).toFixed(0)}% of 0.6f'c)
           </div>
         </div>
       </div>
 
-      {/* Summary Table (sorted by stress ratio) */}
-      <h3 className="text-sm font-semibold text-[#8899aa] mb-2">Members Sorted by Stress Ratio (Descending)</h3>
+      {/* Summary Table */}
+      <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Members Sorted by Stress Ratio (Descending)</h3>
       <div className="overflow-x-auto mb-4">
         <table>
           <thead>
@@ -177,7 +177,7 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
               return (
                 <tr key={s.memberId} className={rowClass}>
                   <td>{m.id}</td>
-                  <td className="text-left text-[#8899aa]">{m.label}</td>
+                  <td className="text-left" style={{ color: 'var(--text-secondary)' }}>{m.label}</td>
                   <td className={maxTRatio > 1 ? 'text-yellow-400 font-semibold' : ''}>
                     {(maxTRatio * 100).toFixed(1)}%
                   </td>
@@ -200,7 +200,8 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
       {/* Export */}
       <button
         onClick={exportCSV}
-        className="px-4 py-2 bg-[#4a9eff] text-white rounded text-sm font-medium hover:bg-[#3a8eef] transition-colors"
+        className="px-4 py-2 text-white rounded text-sm font-medium hover:opacity-90 transition-opacity"
+        style={{ background: 'var(--accent)' }}
       >
         Export Summary as CSV
       </button>

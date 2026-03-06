@@ -8,7 +8,7 @@ interface Props {
 
 export default function ResultsTab({ frameModel, results, material }: Props) {
   if (!results) {
-    return <div className="text-[#8899aa] text-sm">No analysis results available. Check model for errors.</div>;
+    return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available. Check model for errors.</div>;
   }
 
   const fr = 7.5 * Math.sqrt(material.fcPsi);
@@ -16,7 +16,7 @@ export default function ResultsTab({ frameModel, results, material }: Props) {
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-[#8899aa] mb-2">Member Forces and Stresses</h3>
+      <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Member Forces and Stresses</h3>
       <div className="overflow-x-auto mb-6">
         <table>
           <thead>
@@ -53,7 +53,7 @@ export default function ResultsTab({ frameModel, results, material }: Props) {
               return (
                 <tr key={m.id} className={rowClass}>
                   <td>{m.id}</td>
-                  <td className="text-left text-[#8899aa] max-w-32 truncate" title={m.label}>{m.label}</td>
+                  <td className="text-left max-w-32 truncate" style={{ color: 'var(--text-secondary)' }} title={m.label}>{m.label}</td>
                   <td className="text-left">{m.orientation === 'horizontal' ? 'H' : 'V'}</td>
                   <td>{m.thicknessIn.toFixed(1)}</td>
                   <td>{m.flexibleLengthFt.toFixed(2)}</td>
@@ -81,13 +81,13 @@ export default function ResultsTab({ frameModel, results, material }: Props) {
       </div>
 
       {/* Stress reference */}
-      <div className="text-xs text-[#667788] mb-4">
+      <div className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>
         f_r = {fr.toFixed(0)} psi (modulus of rupture) | 0.60 f'c = {fc_limit.toFixed(0)} psi
         <br />V₁/M₁/ft₁/fc₁ = start face | V₂/M₂/ft₂/fc₂ = end face | P = axial (+ tension)
       </div>
 
       {/* Reactions */}
-      <h3 className="text-sm font-semibold text-[#8899aa] mb-2">Support Reactions</h3>
+      <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Support Reactions</h3>
       <div className="overflow-x-auto mb-4">
         <table>
           <thead>
@@ -112,8 +112,8 @@ export default function ResultsTab({ frameModel, results, material }: Props) {
       </div>
 
       {/* Equilibrium Check */}
-      <h3 className="text-sm font-semibold text-[#8899aa] mb-2">Equilibrium Check</h3>
-      <div className="text-xs text-[#8899aa] space-y-1 p-3 bg-[#16213e] rounded">
+      <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Equilibrium Check</h3>
+      <div className="text-xs space-y-1 p-3 rounded" style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)' }}>
         <div>Total Applied Load: {results.totalWeight.total.toFixed(3)} kips</div>
         <div>Total Vertical Reactions: {results.reactions.reduce((s, r) => s + r.verticalKips, 0).toFixed(3)} kips</div>
         <div>Vertical Residual: {results.equilibriumResidual.verticalKips.toFixed(6)} kips

@@ -14,7 +14,8 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
     <div className="mb-2">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-3 py-2 bg-[#16213e] rounded text-sm font-semibold text-[#8899aa] hover:text-[#c0c8d0]"
+        className="w-full flex items-center justify-between px-3 py-2 rounded text-sm font-semibold"
+        style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)' }}
       >
         {title}
         <span className="text-xs">{open ? '\u25BC' : '\u25B6'}</span>
@@ -29,7 +30,7 @@ function Field({ label, unit, value, onChange, min, step }: {
 }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-xs text-[#8899aa] flex-1 min-w-0">{label}</label>
+      <label className="text-xs flex-1 min-w-0" style={{ color: 'var(--text-secondary)' }}>{label}</label>
       <div className="flex items-center gap-1">
         <input
           type="number"
@@ -39,7 +40,7 @@ function Field({ label, unit, value, onChange, min, step }: {
           step={step || 0.1}
           className="w-20 text-right"
         />
-        {unit && <span className="text-xs text-[#667788] w-8">{unit}</span>}
+        {unit && <span className="text-xs w-8" style={{ color: 'var(--text-tertiary)' }}>{unit}</span>}
       </div>
     </div>
   );
@@ -54,7 +55,7 @@ export default function InputPanel({ inputs, onChange, frameModel, onMemberThick
 
   return (
     <div className="p-3 text-sm">
-      <h1 className="text-base font-bold text-[#c0c8d0] mb-3">Vierendeel Frame Analyzer</h1>
+      <h1 className="text-base font-bold mb-3" style={{ color: 'var(--text-primary)' }}>Vierendeel Frame Analyzer</h1>
 
       <Section title="Panel Geometry">
         <Field label="Width" unit="ft" value={inputs.panel.widthFt}
@@ -64,7 +65,7 @@ export default function InputPanel({ inputs, onChange, frameModel, onMemberThick
         <Field label="Default Thickness" unit="in" value={inputs.panel.defaultThicknessIn}
           onChange={v => update(d => { d.panel.defaultThicknessIn = v; })} min={1} step={0.5} />
         <div className="flex items-center gap-2">
-          <label className="text-xs text-[#8899aa] flex-1">Number of Openings</label>
+          <label className="text-xs flex-1" style={{ color: 'var(--text-secondary)' }}>Number of Openings</label>
           <select
             value={inputs.panel.numOpenings}
             onChange={e => update(d => { d.panel.numOpenings = parseInt(e.target.value); })}
@@ -77,8 +78,8 @@ export default function InputPanel({ inputs, onChange, frameModel, onMemberThick
 
       <Section title="Openings">
         {inputs.openings.map((o, i) => (
-          <div key={i} className="mb-3 p-2 bg-[#0d1220] rounded">
-            <div className="text-xs font-semibold text-[#667788] mb-1">Opening {i + 1}</div>
+          <div key={i} className="mb-3 p-2 rounded" style={{ background: 'var(--bg-card)' }}>
+            <div className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)' }}>Opening {i + 1}</div>
             <div className="space-y-1">
               <Field label="Width" unit="ft" value={o.widthFt}
                 onChange={v => update(d => { d.openings[i].widthFt = v; })} min={0.5} />
@@ -98,7 +99,7 @@ export default function InputPanel({ inputs, onChange, frameModel, onMemberThick
           onChange={v => update(d => { d.supports.leftXFt = v; })} min={0} />
         <Field label="Right Support X" unit="ft" value={inputs.supports.rightXFt}
           onChange={v => update(d => { d.supports.rightXFt = v; })} min={0} />
-        <div className="text-xs text-[#556677] mt-1">Left: Pin (dx, dy) | Right: Roller (dy)</div>
+        <div className="text-xs mt-1" style={{ color: 'var(--text-hint)' }}>Left: Pin (dx, dy) | Right: Roller (dy)</div>
       </Section>
 
       <Section title="Material Properties">
@@ -106,7 +107,7 @@ export default function InputPanel({ inputs, onChange, frameModel, onMemberThick
           onChange={v => update(d => { d.material.unitWeightPcf = v; })} min={1} step={1} />
         <Field label="f'c" unit="psi" value={inputs.material.fcPsi}
           onChange={v => update(d => { d.material.fcPsi = v; d.material.ePsi = 57000 * Math.sqrt(v); })} min={1000} step={500} />
-        <div className="text-xs text-[#556677]">
+        <div className="text-xs" style={{ color: 'var(--text-hint)' }}>
           E = {(inputs.material.ePsi / 1000).toFixed(0)} ksi ({(inputs.material.ePsi).toFixed(0)} psi)
         </div>
       </Section>
@@ -120,7 +121,7 @@ export default function InputPanel({ inputs, onChange, frameModel, onMemberThick
 
       {frameModel.members.length > 0 && (
         <Section title="Member Thicknesses" defaultOpen={false}>
-          <div className="text-xs text-[#556677] mb-2">
+          <div className="text-xs mb-2" style={{ color: 'var(--text-hint)' }}>
             Override individual member thicknesses. Unmodified members use the panel default ({inputs.panel.defaultThicknessIn} in).
           </div>
           <div className="overflow-x-auto">
@@ -136,7 +137,7 @@ export default function InputPanel({ inputs, onChange, frameModel, onMemberThick
                 {frameModel.members.map(m => (
                   <tr key={m.id} className={m.thicknessOverridden ? 'bg-blue-900/20' : ''}>
                     <td>{m.id}</td>
-                    <td className="text-left text-[#8899aa] max-w-32 truncate" title={m.label}>{m.label}</td>
+                    <td className="text-left max-w-32 truncate" style={{ color: 'var(--text-secondary)' }} title={m.label}>{m.label}</td>
                     <td>
                       <input
                         type="number"
