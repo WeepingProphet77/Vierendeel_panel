@@ -66,24 +66,30 @@ export interface MemberForces {
   shearEndFaceKips: number;
   momentStartFaceFtKips: number;
   momentEndFaceFtKips: number;
+  /** Peak moment in flexible span (ft-kips) — may exceed face moments for members with UDL */
+  maxMomentFtKips: number;
+  /** Location of peak moment measured from start node (ft) */
+  maxMomentLocationFt: number;
   /** Uniform transverse load on flexible span (kip/ft), for diagram interpolation */
   uniformLoadKipPerFt: number;
 }
 
+export interface FaceStress {
+  axialPsi: number;
+  bendingPsi: number;
+  maxTensilePsi: number;
+  maxCompressivePsi: number;
+}
+
 export interface MemberStresses {
   memberId: number;
-  startFace: {
-    axialPsi: number;
-    bendingPsi: number;
-    maxTensilePsi: number;
-    maxCompressivePsi: number;
-  };
-  endFace: {
-    axialPsi: number;
-    bendingPsi: number;
-    maxTensilePsi: number;
-    maxCompressivePsi: number;
-  };
+  startFace: FaceStress;
+  endFace: FaceStress;
+  /** Peak stress at location of max moment in flexible span */
+  maxSpan: FaceStress;
+  /** Governing (worst-case) tensile and compressive stress across all locations */
+  governingTensilePsi: number;
+  governingCompressivePsi: number;
   status: 'OK' | 'Cracked' | 'High Compression';
 }
 

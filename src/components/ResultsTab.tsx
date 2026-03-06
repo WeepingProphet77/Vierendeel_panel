@@ -40,12 +40,11 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
               <th>P (kips)</th>
               <th>V₁ (kips)</th>
               <th>M₁ (ft-k)</th>
-              <th>ft₁ (psi)</th>
-              <th>fc₁ (psi)</th>
               <th>V₂ (kips)</th>
               <th>M₂ (ft-k)</th>
-              <th>ft₂ (psi)</th>
-              <th>fc₂ (psi)</th>
+              <th>M_max (ft-k)</th>
+              <th>Gov ft (psi)</th>
+              <th>Gov fc (psi)</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -62,6 +61,9 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
               else if (stresses.status === 'Cracked') rowClass = 'bg-yellow-900/20';
               else rowClass = 'bg-green-900/10';
 
+              const mMaxExceedsFaces = Math.abs(forces.maxMomentFtKips) > Math.abs(forces.momentStartFaceFtKips) + 0.01 &&
+                Math.abs(forces.maxMomentFtKips) > Math.abs(forces.momentEndFaceFtKips) + 0.01;
+
               return (
                 <tr key={m.id} className={`cursor-pointer ${rowClass}`}
                   onClick={() => onSelectMember(isSelected ? null : m.id)}>
@@ -74,12 +76,17 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
                   <td>{forces.axialKips.toFixed(2)}</td>
                   <td>{forces.shearStartFaceKips.toFixed(2)}</td>
                   <td>{forces.momentStartFaceFtKips.toFixed(2)}</td>
-                  <td>{stresses.startFace.maxTensilePsi.toFixed(0)}</td>
-                  <td>{stresses.startFace.maxCompressivePsi.toFixed(0)}</td>
                   <td>{forces.shearEndFaceKips.toFixed(2)}</td>
                   <td>{forces.momentEndFaceFtKips.toFixed(2)}</td>
-                  <td>{stresses.endFace.maxTensilePsi.toFixed(0)}</td>
-                  <td>{stresses.endFace.maxCompressivePsi.toFixed(0)}</td>
+                  <td className={mMaxExceedsFaces ? 'font-semibold' : ''} style={mMaxExceedsFaces ? { color: 'var(--accent)' } : undefined}>
+                    {forces.maxMomentFtKips.toFixed(2)}
+                  </td>
+                  <td className={stresses.governingTensilePsi > fr ? 'text-yellow-400 font-semibold' : ''}>
+                    {stresses.governingTensilePsi.toFixed(0)}
+                  </td>
+                  <td className={stresses.governingCompressivePsi > fc_limit ? 'text-red-400 font-semibold' : ''}>
+                    {stresses.governingCompressivePsi.toFixed(0)}
+                  </td>
                   <td className={`text-left font-semibold ${
                     stresses.status === 'OK' ? 'text-green-400' :
                     stresses.status === 'Cracked' ? 'text-yellow-400' : 'text-red-400'
@@ -108,7 +115,8 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
       {/* Stress reference */}
       <div className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>
         f_r = {fr.toFixed(0)} psi (modulus of rupture) | 0.60 f'c = {fc_limit.toFixed(0)} psi
-        <br />V₁/M₁/ft₁/fc₁ = start face | V₂/M₂/ft₂/fc₂ = end face | P = axial (+ tension)
+        <br />V₁/M₁ = start face | V₂/M₂ = end face | M_max = peak moment in flex span | P = axial (+ tension)
+        <br />Gov ft/fc = governing tensile/compressive stress across all critical sections (faces + mid-span)
       </div>
 
       {/* Reactions */}

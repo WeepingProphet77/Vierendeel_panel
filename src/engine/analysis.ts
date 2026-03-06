@@ -563,6 +563,49 @@ export function runAnalysis(
     // Let's just use P_start as the member axial force. Tension positive means pulling the member apart at start.
     // For a horizontal member under gravity only, axial should be small.
 
+    // Compute peak moment in the flexible span for horizontal members with UDL.
+    // The moment is parabolic: M(x_flex) = M_face_start + V_face_start * x_flex - w * x_flex^2 / 2
+    // Peak occurs where dM/dx = 0 => x_flex = V_face_start / w (if V changes sign in the span)
+    let maxMomentFtKips: number;
+    let maxMomentLocationFt: number;
+
+    if (member.orientation === 'horizontal' && Math.abs(w) > 1e-12) {
+      const x_peak_flex = V_face_start / w; // distance from start face where V = 0
+      if (x_peak_flex > 0 && x_peak_flex < Lf) {
+        // Peak is within the flexible span
+        const M_peak = M_face_start + V_face_start * x_peak_flex - w * x_peak_flex * x_peak_flex / 2;
+        // Compare with face moments to find the true max
+        const moments = [
+          { m: M_face_start, loc: a_off },
+          { m: M_face_end, loc: a_off + Lf },
+          { m: M_peak, loc: a_off + x_peak_flex },
+        ];
+        const governing = moments.reduce((best, cur) =>
+          Math.abs(cur.m) > Math.abs(best.m) ? cur : best
+        );
+        maxMomentFtKips = governing.m;
+        maxMomentLocationFt = governing.loc;
+      } else {
+        // Peak is outside the span — max is at one of the faces
+        if (Math.abs(M_face_start) >= Math.abs(M_face_end)) {
+          maxMomentFtKips = M_face_start;
+          maxMomentLocationFt = a_off;
+        } else {
+          maxMomentFtKips = M_face_end;
+          maxMomentLocationFt = a_off + Lf;
+        }
+      }
+    } else {
+      // No UDL — moment is linear, max is at a face
+      if (Math.abs(M_face_start) >= Math.abs(M_face_end)) {
+        maxMomentFtKips = M_face_start;
+        maxMomentLocationFt = a_off;
+      } else {
+        maxMomentFtKips = M_face_end;
+        maxMomentLocationFt = a_off + Lf;
+      }
+    }
+
     memberForces.push({
       memberId: member.id,
       axialKips: P_start,
@@ -570,6 +613,8 @@ export function runAnalysis(
       shearEndFaceKips: V_face_end,
       momentStartFaceFtKips: M_face_start,
       momentEndFaceFtKips: M_face_end,
+      maxMomentFtKips,
+      maxMomentLocationFt,
       uniformLoadKipPerFt: w,
     });
 
@@ -580,45 +625,42 @@ export function runAnalysis(
 
     const axialStressPsi = (P_start * 1000) / A; // kips to lbs, then / in²
 
-    const M_start_kipIn = M_face_start * 12; // ft-kips to kip-in
-    const M_end_kipIn = M_face_end * 12;
+    // Helper: compute face stresses at a given moment
+    function computeFaceStress(M_ftKips: number) {
+      const M_kipIn = M_ftKips * 12; // ft-kips → kip-in
+      const bendingPsi = (Math.abs(M_kipIn) * c / I) * 1000; // ksi → psi
+      const sign = M_kipIn >= 0 ? 1 : -1;
+      // Tensile stress: axial (+ = tension) plus bending on the tension side
+      const tensilePsi = axialStressPsi + sign * bendingPsi;
+      // Compressive stress: magnitude on the compression side
+      const compressivePsi = -axialStressPsi + sign * bendingPsi;
+      return {
+        axialPsi: axialStressPsi,
+        bendingPsi,
+        maxTensilePsi: tensilePsi,
+        maxCompressivePsi: compressivePsi,
+      };
+    }
 
-    // M in kip-in. stress = M * c / I. If M is in kip-in, c in inches, I in in⁴:
-    // stress = (kip-in * in) / in⁴ = kip/in² = ksi. Need to convert to psi: * 1000
-    const bendingStressStartPsi = (Math.abs(M_start_kipIn) * c / I) * 1000;
-    const bendingStressEndPsi = (Math.abs(M_end_kipIn) * c / I) * 1000;
+    const startFace = computeFaceStress(M_face_start);
+    const endFace = computeFaceStress(M_face_end);
+    const maxSpan = computeFaceStress(maxMomentFtKips);
 
-    // Max tensile = +axial + bending (tension side)
-    // Max compressive = -axial + bending (compression side)  ... wait
-    // If axial is tension (+), max tensile stress = axialStress + bendingStress
-    // If axial is tension (+), max compressive stress = -axialStress + bendingStress
-    // Actually: max tensile = axialStress + bendingStress (if axial is tension)
-    //           max compressive = |−axialStress + bendingStress| or bendingStress - axialStress
-
-    // Let's define: tension is positive for axialStressPsi
-    const startTensile = axialStressPsi + bendingStressStartPsi;
-    const startCompressive = -axialStressPsi + bendingStressStartPsi; // compression magnitude
-    const endTensile = axialStressPsi + bendingStressEndPsi;
-    const endCompressive = -axialStressPsi + bendingStressEndPsi;
+    // Governing stresses across all critical sections
+    const governingTensilePsi = Math.max(startFace.maxTensilePsi, endFace.maxTensilePsi, maxSpan.maxTensilePsi);
+    const governingCompressivePsi = Math.max(startFace.maxCompressivePsi, endFace.maxCompressivePsi, maxSpan.maxCompressivePsi);
 
     let status: 'OK' | 'Cracked' | 'High Compression' = 'OK';
-    if (Math.max(startTensile, endTensile) > fr) status = 'Cracked';
-    if (Math.max(startCompressive, endCompressive) > fc_limit) status = 'High Compression';
+    if (governingTensilePsi > fr) status = 'Cracked';
+    if (governingCompressivePsi > fc_limit) status = 'High Compression';
 
     memberStresses.push({
       memberId: member.id,
-      startFace: {
-        axialPsi: axialStressPsi,
-        bendingPsi: bendingStressStartPsi,
-        maxTensilePsi: startTensile,
-        maxCompressivePsi: startCompressive,
-      },
-      endFace: {
-        axialPsi: axialStressPsi,
-        bendingPsi: bendingStressEndPsi,
-        maxTensilePsi: endTensile,
-        maxCompressivePsi: endCompressive,
-      },
+      startFace,
+      endFace,
+      maxSpan,
+      governingTensilePsi,
+      governingCompressivePsi,
       status,
     });
   }
