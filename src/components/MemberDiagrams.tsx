@@ -113,7 +113,6 @@ function computeStressDiagram(
 // Colors
 const RIGID_FILL = 'var(--border)';
 const POS_COLOR = '#4a9eff';
-const NEG_COLOR = '#ff6644';
 const TENSION_COLOR = '#ff6644';
 const COMPRESSION_COLOR = '#4a9eff';
 const AXIS_COLOR = 'var(--text-tertiary)';

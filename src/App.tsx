@@ -3,7 +3,7 @@ import './index.css';
 import type { AppInputs, Opening, FrameModel, Member } from './types';
 import { generateFrameModel } from './engine/frameModel';
 import { runAnalysis } from './engine/analysis';
-import { useTheme } from './ThemeContext';
+import { useTheme } from './useTheme';
 import InputPanel from './components/InputPanel';
 import ModelTab from './components/ModelTab';
 import ResultsTab from './components/ResultsTab';

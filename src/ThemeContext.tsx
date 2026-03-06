@@ -1,14 +1,8 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-
-type Theme = 'dark' | 'light';
-
-const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
-  theme: 'dark',
-  toggle: () => {},
-});
+import { useState, useEffect, type ReactNode } from 'react';
+import { ThemeContext } from './useTheme';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('vierendeel-theme');
     return saved === 'light' ? 'light' : 'dark';
   });
@@ -25,8 +19,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       {children}
     </ThemeContext.Provider>
   );
-}
-
-export function useTheme() {
-  return useContext(ThemeContext);
 }

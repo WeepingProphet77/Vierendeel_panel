@@ -426,7 +426,7 @@ export function runAnalysis(
   try {
     const Kinv = matInverse(K);
     displacements = matMulVec(Kinv, F);
-  } catch (e) {
+  } catch {
     return { error: 'Failed to solve stiffness equations. Matrix may be singular.' };
   }
 
@@ -678,7 +678,7 @@ export function runAnalysis(
   const equilibriumVertical = totalVerticalReaction + appliedVertical;
 
   // Moment equilibrium about left support
-  let momentResidual = 0;
+  const momentResidual = 0;
   // This is complex to compute accurately - skip detailed moment check for now
   // Just report the vertical residual
 
