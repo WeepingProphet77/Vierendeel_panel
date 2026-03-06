@@ -625,20 +625,22 @@ export function runAnalysis(
 
     const axialStressPsi = (P_start * 1000) / A; // kips to lbs, then / in²
 
-    // Helper: compute face stresses at a given moment
+    // Helper: compute extreme fiber stresses at a given moment.
+    // Combined stress = P/A ± Mc/I. The max tensile and compressive stresses
+    // occur on opposite fibers. The sign of M determines which fiber is which,
+    // but the MAGNITUDES of the peak stresses are independent of moment sign.
     function computeFaceStress(M_ftKips: number) {
       const M_kipIn = M_ftKips * 12; // ft-kips → kip-in
       const bendingPsi = (Math.abs(M_kipIn) * c / I) * 1000; // ksi → psi
-      const sign = M_kipIn >= 0 ? 1 : -1;
-      // Tensile stress: axial (+ = tension) plus bending on the tension side
-      const tensilePsi = axialStressPsi + sign * bendingPsi;
-      // Compressive stress: magnitude on the compression side
-      const compressivePsi = -axialStressPsi + sign * bendingPsi;
+      // Max tensile on extreme fiber: axial tension + bending tension
+      const maxTensilePsi = axialStressPsi + bendingPsi;
+      // Max compressive on opposite fiber: bending compression - axial tension
+      const maxCompressivePsi = bendingPsi - axialStressPsi;
       return {
         axialPsi: axialStressPsi,
         bendingPsi,
-        maxTensilePsi: tensilePsi,
-        maxCompressivePsi: compressivePsi,
+        maxTensilePsi,
+        maxCompressivePsi,
       };
     }
 
