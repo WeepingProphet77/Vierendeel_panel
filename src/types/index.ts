@@ -66,6 +66,8 @@ export interface MemberForces {
   shearEndFaceKips: number;
   momentStartFaceFtKips: number;
   momentEndFaceFtKips: number;
+  /** Uniform transverse load on flexible span (kip/ft), for diagram interpolation */
+  uniformLoadKipPerFt: number;
 }
 
 export interface MemberStresses {

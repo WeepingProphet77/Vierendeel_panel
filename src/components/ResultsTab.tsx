@@ -1,12 +1,15 @@
 import type { FrameModel, AnalysisResults, MaterialProperties } from '../types';
+import MemberDiagrams from './MemberDiagrams';
 
 interface Props {
   frameModel: FrameModel;
   results: AnalysisResults | null;
   material: MaterialProperties;
+  selectedMemberId: number | null;
+  onSelectMember: (id: number | null) => void;
 }
 
-export default function ResultsTab({ frameModel, results, material }: Props) {
+export default function ResultsTab({ frameModel, results, material, selectedMemberId, onSelectMember }: Props) {
   if (!results) {
     return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available. Check model for errors.</div>;
   }
@@ -14,9 +17,16 @@ export default function ResultsTab({ frameModel, results, material }: Props) {
   const fr = 7.5 * Math.sqrt(material.fcPsi);
   const fc_limit = 0.60 * material.fcPsi;
 
+  const selectedMember = selectedMemberId ? frameModel.members.find(m => m.id === selectedMemberId) : null;
+  const selectedForces = selectedMemberId ? results.memberForces.find(f => f.memberId === selectedMemberId) : null;
+  const selectedStresses = selectedMemberId ? results.memberStresses.find(s => s.memberId === selectedMemberId) : null;
+
   return (
     <div>
-      <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Member Forces and Stresses</h3>
+      <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>
+        Member Forces and Stresses
+        <span className="font-normal ml-2" style={{ color: 'var(--text-hint)' }}>(click a row to view diagrams)</span>
+      </h3>
       <div className="overflow-x-auto mb-6">
         <table>
           <thead>
@@ -45,13 +55,16 @@ export default function ResultsTab({ frameModel, results, material }: Props) {
               const stresses = results.memberStresses.find(s => s.memberId === m.id);
               if (!forces || !stresses) return null;
 
+              const isSelected = m.id === selectedMemberId;
               let rowClass = '';
-              if (stresses.status === 'High Compression') rowClass = 'bg-red-900/30';
+              if (isSelected) rowClass = 'bg-blue-900/30';
+              else if (stresses.status === 'High Compression') rowClass = 'bg-red-900/30';
               else if (stresses.status === 'Cracked') rowClass = 'bg-yellow-900/20';
               else rowClass = 'bg-green-900/10';
 
               return (
-                <tr key={m.id} className={rowClass}>
+                <tr key={m.id} className={`cursor-pointer ${rowClass}`}
+                  onClick={() => onSelectMember(isSelected ? null : m.id)}>
                   <td>{m.id}</td>
                   <td className="text-left max-w-32 truncate" style={{ color: 'var(--text-secondary)' }} title={m.label}>{m.label}</td>
                   <td className="text-left">{m.orientation === 'horizontal' ? 'H' : 'V'}</td>
@@ -79,6 +92,18 @@ export default function ResultsTab({ frameModel, results, material }: Props) {
           </tbody>
         </table>
       </div>
+
+      {/* Force/Stress Diagrams for selected member */}
+      {selectedMember && selectedForces && selectedStresses && (
+        <div className="mb-6">
+          <MemberDiagrams
+            member={selectedMember}
+            forces={selectedForces}
+            stresses={selectedStresses}
+            material={material}
+          />
+        </div>
+      )}
 
       {/* Stress reference */}
       <div className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>
