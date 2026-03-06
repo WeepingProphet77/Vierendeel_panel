@@ -77,21 +77,73 @@ export default function InputPanel({ inputs, onChange, frameModel, onMemberThick
       </Section>
 
       <Section title="Openings">
-        {inputs.openings.map((o, i) => (
-          <div key={i} className="mb-3 p-2 rounded" style={{ background: 'var(--bg-card)' }}>
-            <div className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)' }}>Opening {i + 1}</div>
-            <div className="space-y-1">
-              <Field label="Width" unit="ft" value={o.widthFt}
-                onChange={v => update(d => { d.openings[i].widthFt = v; })} min={0.5} />
-              <Field label="Height" unit="ft" value={o.heightFt}
-                onChange={v => update(d => { d.openings[i].heightFt = v; })} min={0.5} />
-              <Field label="Center X" unit="ft" value={o.centerXFt}
-                onChange={v => update(d => { d.openings[i].centerXFt = v; })} min={0} />
-              <Field label="Center Y" unit="ft" value={o.centerYFt}
-                onChange={v => update(d => { d.openings[i].centerYFt = v; })} min={0} />
-            </div>
-          </div>
-        ))}
+        {(() => {
+          // Sort openings by centerX for display and gap computation
+          const sortedIndices = inputs.openings
+            .map((_, i) => i)
+            .sort((a, b) => inputs.openings[a].centerXFt - inputs.openings[b].centerXFt);
+
+          return sortedIndices.map((origIdx, displayIdx) => {
+            const o = inputs.openings[origIdx];
+            const leftEdge = o.centerXFt - o.widthFt / 2;
+            const bottomEdge = o.centerYFt - o.heightFt / 2;
+
+            // Compute horizontal gap: distance from panel left (first) or previous opening right edge
+            let gapFrom: number;
+            if (displayIdx === 0) {
+              gapFrom = leftEdge;
+            } else {
+              const prevIdx = sortedIndices[displayIdx - 1];
+              const prev = inputs.openings[prevIdx];
+              const prevRightEdge = prev.centerXFt + prev.widthFt / 2;
+              gapFrom = leftEdge - prevRightEdge;
+            }
+
+            const gapLabel = displayIdx === 0
+              ? 'Left Edge Setback'
+              : `Gap from Opening ${displayIdx}`;
+
+            return (
+              <div key={origIdx} className="mb-3 p-2 rounded" style={{ background: 'var(--bg-card)' }}>
+                <div className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)' }}>Opening {displayIdx + 1}</div>
+                <div className="space-y-1">
+                  <Field label={gapLabel} unit="ft"
+                    value={Math.round(gapFrom * 100) / 100}
+                    onChange={v => update(d => {
+                      let newLeftEdge: number;
+                      if (displayIdx === 0) {
+                        newLeftEdge = v;
+                      } else {
+                        const prevIdx2 = sortedIndices[displayIdx - 1];
+                        const prev2 = d.openings[prevIdx2];
+                        newLeftEdge = prev2.centerXFt + prev2.widthFt / 2 + v;
+                      }
+                      d.openings[origIdx].centerXFt = Math.round((newLeftEdge + d.openings[origIdx].widthFt / 2) * 100) / 100;
+                    })} min={0} />
+                  <Field label="Bottom Setback" unit="ft"
+                    value={Math.round(bottomEdge * 100) / 100}
+                    onChange={v => update(d => {
+                      d.openings[origIdx].centerYFt = Math.round((v + d.openings[origIdx].heightFt / 2) * 100) / 100;
+                    })} min={0} />
+                  <Field label="Width" unit="ft" value={o.widthFt}
+                    onChange={v => update(d => {
+                      // Keep the left edge fixed when changing width
+                      const curLeftEdge = d.openings[origIdx].centerXFt - d.openings[origIdx].widthFt / 2;
+                      d.openings[origIdx].widthFt = v;
+                      d.openings[origIdx].centerXFt = Math.round((curLeftEdge + v / 2) * 100) / 100;
+                    })} min={0.5} />
+                  <Field label="Height" unit="ft" value={o.heightFt}
+                    onChange={v => update(d => {
+                      // Keep the bottom edge fixed when changing height
+                      const curBotEdge = d.openings[origIdx].centerYFt - d.openings[origIdx].heightFt / 2;
+                      d.openings[origIdx].heightFt = v;
+                      d.openings[origIdx].centerYFt = Math.round((curBotEdge + v / 2) * 100) / 100;
+                    })} min={0.5} />
+                </div>
+              </div>
+            );
+          });
+        })()}
       </Section>
 
       <Section title="Supports">
