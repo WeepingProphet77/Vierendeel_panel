@@ -358,152 +358,157 @@ export function generateFrameModel(
   // Find the bottom spandrel centerline Y
   const bottomStripY = hStripYRanges.length > 0 ? (hStripYRanges[0].bottom + hStripYRanges[0].top) / 2 : 0;
 
-  // If support nodes don't coincide with existing joint nodes, add connecting members
   // Find nearest joint nodes along the bottom spandrel for each support
   const bottomStripDepthFt = hStripYRanges.length > 0 ? hStripYRanges[0].top - hStripYRanges[0].bottom : panel.heightFt;
   const bottomStripDepthIn = bottomStripDepthFt * 12;
 
-  function addSupportWithConnector(supportXFt: number, restraints: { dx: boolean; dy: boolean; rz: boolean }, label: string) {
-    // Check if the support falls within a pier's rigid zone
-    const containingPier = pierXRanges.find(p => supportXFt >= p.left - 0.001 && supportXFt <= p.right + 0.001);
+  /** Helper: find the pier that a node belongs to (by its centerline x) */
+  function findPierForNode(nodeX: number) {
+    return pierXRanges.find(p => Math.abs((p.left + p.right) / 2 - nodeX) < 0.001);
+  }
 
+  /** Helper: create a horizontal bottom-strip member between two nodes */
+  function makeBottomMember(
+    startNodeId: number, endNodeId: number,
+    dist: number, offsetStart: number, offsetEnd: number,
+    memberLabel: string
+  ) {
+    const flexLen = dist - offsetStart - offsetEnd;
+    if (flexLen <= 0.001) return; // skip degenerate members
+    members.push({
+      id: memberIdCounter++,
+      label: memberLabel,
+      startNodeId,
+      endNodeId,
+      centerlineLengthFt: dist,
+      rigidOffsetStartFt: offsetStart,
+      rigidOffsetEndFt: offsetEnd,
+      flexibleLengthFt: flexLen,
+      thicknessIn: defaultThicknessIn,
+      thicknessOverridden: false,
+      depthIn: bottomStripDepthIn,
+      areaIn2: defaultThicknessIn * bottomStripDepthIn,
+      inertiaIn4: defaultThicknessIn * Math.pow(bottomStripDepthIn, 3) / 12,
+      orientation: 'horizontal',
+    });
+  }
+
+  function addSupportWithConnector(supportXFt: number, restraints: { dx: boolean; dy: boolean; rz: boolean }, label: string) {
+    // Case 1: Check if the support coincides with an existing pier centerline node
+    for (const pier of pierXRanges) {
+      const pierCx = (pier.left + pier.right) / 2;
+      if (Math.abs(supportXFt - pierCx) < 0.001) {
+        const pierNode = nodeMap.get(`${pierCx.toFixed(6)},${bottomStripY.toFixed(6)}`);
+        if (pierNode) {
+          pierNode.restraints.dx = pierNode.restraints.dx || restraints.dx;
+          pierNode.restraints.dy = pierNode.restraints.dy || restraints.dy;
+          pierNode.restraints.rz = pierNode.restraints.rz || restraints.rz;
+          return;
+        }
+      }
+    }
+
+    // Create the support node
+    const supportNode = getOrCreateNode(supportXFt, bottomStripY, restraints);
+
+    // Case 2: Support is within a pier's rigid zone (but not at centerline)
+    // Add a rigid-link member from pier centerline to support (zero rigid offsets;
+    // the short length + full cross-section makes it naturally very stiff)
+    const containingPier = pierXRanges.find(p => supportXFt >= p.left - 0.001 && supportXFt <= p.right + 0.001);
     if (containingPier) {
-      // Support is within a pier - apply restraints to the pier's centerline node
       const pierCx = (containingPier.left + containingPier.right) / 2;
       const pierNode = nodeMap.get(`${pierCx.toFixed(6)},${bottomStripY.toFixed(6)}`);
-      if (pierNode) {
-        pierNode.restraints.dx = pierNode.restraints.dx || restraints.dx;
-        pierNode.restraints.dy = pierNode.restraints.dy || restraints.dy;
-        pierNode.restraints.rz = pierNode.restraints.rz || restraints.rz;
+      if (pierNode && pierNode.id !== supportNode.id) {
+        const dist = Math.abs(supportXFt - pierCx);
+        const [startId, endId] = supportXFt < pierCx
+          ? [supportNode.id, pierNode.id]
+          : [pierNode.id, supportNode.id];
+        members.push({
+          id: memberIdCounter++,
+          label: `${label} Rigid Link`,
+          startNodeId: startId,
+          endNodeId: endId,
+          centerlineLengthFt: dist,
+          rigidOffsetStartFt: 0,
+          rigidOffsetEndFt: 0,
+          flexibleLengthFt: dist,
+          thicknessIn: defaultThicknessIn,
+          thicknessOverridden: false,
+          depthIn: bottomStripDepthIn,
+          areaIn2: defaultThicknessIn * bottomStripDepthIn,
+          inertiaIn4: defaultThicknessIn * Math.pow(bottomStripDepthIn, 3) / 12,
+          orientation: 'horizontal',
+        });
         return;
       }
     }
 
-    // Support is NOT within a pier - create a support node and connect it
-    const supportNode = getOrCreateNode(supportXFt, bottomStripY, restraints);
+    // Case 3: Support is between piers (in or near the flexible span)
+    // Find the bottom-strip member that spans across this x position and split it
+    const spanningIdx = members.findIndex(m => {
+      if (m.orientation !== 'horizontal') return false;
+      const sn = nodes.find(n => n.id === m.startNodeId)!;
+      const en = nodes.find(n => n.id === m.endNodeId)!;
+      if (Math.abs(sn.y - bottomStripY) > 0.001 || Math.abs(en.y - bottomStripY) > 0.001) return false;
+      const minX = Math.min(sn.x, en.x);
+      const maxX = Math.max(sn.x, en.x);
+      return supportXFt > minX + 0.001 && supportXFt < maxX - 0.001;
+    });
 
-    const bottomNodes = nodes.filter(n =>
-      Math.abs(n.y - bottomStripY) < 0.001 && n.id !== supportNode.id
-    );
+    if (spanningIdx >= 0) {
+      const spanning = members[spanningIdx];
+      const sn = nodes.find(n => n.id === spanning.startNodeId)!;
+      const en = nodes.find(n => n.id === spanning.endNodeId)!;
+      const [leftNode, rightNode] = sn.x < en.x ? [sn, en] : [en, sn];
 
-    if (bottomNodes.length === 0) return;
+      const leftPier = findPierForNode(leftNode.x);
+      const rightPier = findPierForNode(rightNode.x);
+      const leftOffset = leftPier ? (leftPier.right - leftPier.left) / 2 : 0;
+      const rightOffset = rightPier ? (rightPier.right - rightPier.left) / 2 : 0;
 
-    // Check if the support node coincides with a joint node
-    const coincident = bottomNodes.find(n => Math.abs(n.x - supportNode.x) < 0.001);
-    if (coincident) {
-      coincident.restraints.dx = coincident.restraints.dx || supportNode.restraints.dx;
-      coincident.restraints.dy = coincident.restraints.dy || supportNode.restraints.dy;
-      coincident.restraints.rz = coincident.restraints.rz || supportNode.restraints.rz;
-      const idx = nodes.indexOf(supportNode);
-      if (idx >= 0 && supportNode.id !== coincident.id) {
-        nodes.splice(idx, 1);
-      }
+      // Remove the old spanning member
+      members.splice(spanningIdx, 1);
+
+      // Left sub-member: leftNode → support
+      const distLeft = supportXFt - leftNode.x;
+      makeBottomMember(leftNode.id, supportNode.id, distLeft, leftOffset, 0, `${label} Span Left`);
+
+      // Right sub-member: support → rightNode
+      const distRight = rightNode.x - supportXFt;
+      makeBottomMember(supportNode.id, rightNode.id, distRight, 0, rightOffset, `${label} Span Right`);
+
       return;
     }
 
-    // Find the two nodes that bracket this support
-    const leftNodes = bottomNodes.filter(n => n.x < supportNode.x).sort((a, b) => b.x - a.x);
-    const rightNodes = bottomNodes.filter(n => n.x > supportNode.x).sort((a, b) => a.x - b.x);
+    // Case 4: Support is beyond the outermost pier nodes (cantilever/extension)
+    // Connect to the nearest bottom-strip node
+    const bottomNodes = nodes.filter(n =>
+      Math.abs(n.y - bottomStripY) < 0.001 && n.id !== supportNode.id
+    );
+    if (bottomNodes.length === 0) return;
 
-    if (leftNodes.length > 0) {
-      const nearNode = leftNodes[0];
-      const dist = supportNode.x - nearNode.x;
-
-      const nearPier = pierXRanges.find(p => {
-        const cx = (p.left + p.right) / 2;
-        return Math.abs(cx - nearNode.x) < 0.001;
-      });
-      const nearOffset = nearPier ? (nearPier.right - nearPier.left) / 2 : 0;
-      const flexLen = dist - nearOffset;
-
-      if (flexLen > 0) {
-        const existingIdx = members.findIndex(m =>
-          m.orientation === 'horizontal' &&
-          ((m.startNodeId === nearNode.id && nodes.find(n => n.id === m.endNodeId)!.x > supportNode.x) ||
-            (m.endNodeId === nearNode.id && nodes.find(n => n.id === m.startNodeId)!.x > supportNode.x))
-        );
-
-        members.push({
-          id: memberIdCounter++,
-          label: `${label} Connector Left`,
-          startNodeId: nearNode.id,
-          endNodeId: supportNode.id,
-          centerlineLengthFt: dist,
-          rigidOffsetStartFt: nearOffset,
-          rigidOffsetEndFt: 0,
-          flexibleLengthFt: flexLen,
-          thicknessIn: defaultThicknessIn,
-          thicknessOverridden: false,
-          depthIn: bottomStripDepthIn,
-          areaIn2: defaultThicknessIn * bottomStripDepthIn,
-          inertiaIn4: defaultThicknessIn * Math.pow(bottomStripDepthIn, 3) / 12,
-          orientation: 'horizontal',
-        });
-
-        if (existingIdx >= 0 && rightNodes.length > 0) {
-          const existingMember = members[existingIdx];
-          const otherNodeId = existingMember.startNodeId === nearNode.id ? existingMember.endNodeId : existingMember.startNodeId;
-          const otherNode = nodes.find(n => n.id === otherNodeId)!;
-
-          members.splice(existingIdx, 1);
-
-          const otherPier = pierXRanges.find(p => {
-            const cx = (p.left + p.right) / 2;
-            return Math.abs(cx - otherNode.x) < 0.001;
-          });
-          const otherOffset = otherPier ? (otherPier.right - otherPier.left) / 2 : 0;
-
-          const dist2 = otherNode.x - supportNode.x;
-          const flexLen2 = dist2 - otherOffset;
-          if (flexLen2 > 0) {
-            members.push({
-              id: memberIdCounter++,
-              label: `${label} Connector Right`,
-              startNodeId: supportNode.id,
-              endNodeId: otherNode.id,
-              centerlineLengthFt: dist2,
-              rigidOffsetStartFt: 0,
-              rigidOffsetEndFt: otherOffset,
-              flexibleLengthFt: flexLen2,
-              thicknessIn: defaultThicknessIn,
-              thicknessOverridden: false,
-              depthIn: bottomStripDepthIn,
-              areaIn2: defaultThicknessIn * bottomStripDepthIn,
-              inertiaIn4: defaultThicknessIn * Math.pow(bottomStripDepthIn, 3) / 12,
-              orientation: 'horizontal',
-            });
-          }
-        }
-      }
-    } else if (rightNodes.length > 0) {
-      const nearNode = rightNodes[0];
-      const dist = nearNode.x - supportNode.x;
-      const nearPier = pierXRanges.find(p => {
-        const cx = (p.left + p.right) / 2;
-        return Math.abs(cx - nearNode.x) < 0.001;
-      });
-      const nearOffset = nearPier ? (nearPier.right - nearPier.left) / 2 : 0;
-      const flexLen = dist - nearOffset;
-
-      if (flexLen > 0) {
-        members.push({
-          id: memberIdCounter++,
-          label: `${label} Connector`,
-          startNodeId: supportNode.id,
-          endNodeId: nearNode.id,
-          centerlineLengthFt: dist,
-          rigidOffsetStartFt: 0,
-          rigidOffsetEndFt: nearOffset,
-          flexibleLengthFt: flexLen,
-          thicknessIn: defaultThicknessIn,
-          thicknessOverridden: false,
-          depthIn: bottomStripDepthIn,
-          areaIn2: defaultThicknessIn * bottomStripDepthIn,
-          inertiaIn4: defaultThicknessIn * Math.pow(bottomStripDepthIn, 3) / 12,
-          orientation: 'horizontal',
-        });
-      }
+    const nearest = bottomNodes.reduce((best, n) =>
+      Math.abs(n.x - supportXFt) < Math.abs(best.x - supportXFt) ? n : best
+    );
+    const dist = Math.abs(supportXFt - nearest.x);
+    if (dist < 0.001) {
+      // Coincident - merge restraints
+      nearest.restraints.dx = nearest.restraints.dx || restraints.dx;
+      nearest.restraints.dy = nearest.restraints.dy || restraints.dy;
+      nearest.restraints.rz = nearest.restraints.rz || restraints.rz;
+      const idx = nodes.indexOf(supportNode);
+      if (idx >= 0 && supportNode.id !== nearest.id) nodes.splice(idx, 1);
+      return;
     }
+
+    const nearPier = findPierForNode(nearest.x);
+    const nearOffset = nearPier ? (nearPier.right - nearPier.left) / 2 : 0;
+    const [startId, endId] = supportXFt < nearest.x
+      ? [supportNode.id, nearest.id]
+      : [nearest.id, supportNode.id];
+    const startOffset = supportXFt < nearest.x ? 0 : nearOffset;
+    const endOffset = supportXFt < nearest.x ? nearOffset : 0;
+    makeBottomMember(startId, endId, dist, startOffset, endOffset, `${label} Extension`);
   }
 
   // Left support: pin (dx, dy restrained)
