@@ -16,14 +16,14 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
 
   if (results) {
     for (const s of results.memberStresses) {
-      for (const [loc, face] of [['start', s.startFace], ['end', s.endFace]] as const) {
+      for (const [loc, face] of [['start face', s.startFace], ['end face', s.endFace], ['mid-span', s.maxSpan]] as const) {
         const tRatio = face.maxTensilePsi / fr;
         if (tRatio > govTensile.ratio) {
-          govTensile = { memberId: s.memberId, location: `${loc} face`, stress: face.maxTensilePsi, ratio: tRatio };
+          govTensile = { memberId: s.memberId, location: loc, stress: face.maxTensilePsi, ratio: tRatio };
         }
         const cRatio = face.maxCompressivePsi / fc_limit;
         if (cRatio > govCompressive.ratio) {
-          govCompressive = { memberId: s.memberId, location: `${loc} face`, stress: face.maxCompressivePsi, ratio: cRatio };
+          govCompressive = { memberId: s.memberId, location: loc, stress: face.maxCompressivePsi, ratio: cRatio };
         }
       }
     }
@@ -32,14 +32,8 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
   const sortedMembers = useMemo(() => {
     if (!results) return [];
     return [...results.memberStresses].sort((a, b) => {
-      const aMax = Math.max(
-        a.startFace.maxTensilePsi / fr, a.endFace.maxTensilePsi / fr,
-        a.startFace.maxCompressivePsi / fc_limit, a.endFace.maxCompressivePsi / fc_limit
-      );
-      const bMax = Math.max(
-        b.startFace.maxTensilePsi / fr, b.endFace.maxTensilePsi / fr,
-        b.startFace.maxCompressivePsi / fc_limit, b.endFace.maxCompressivePsi / fc_limit
-      );
+      const aMax = Math.max(a.governingTensilePsi / fr, a.governingCompressivePsi / fc_limit);
+      const bMax = Math.max(b.governingTensilePsi / fr, b.governingCompressivePsi / fc_limit);
       return bMax - aMax;
     });
   }, [results, fr, fc_limit]);
@@ -68,7 +62,7 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
     rows.push(['Max Deflection', `${results.maxDeflection.valueIn.toFixed(4)} in`, `Node ${results.maxDeflection.nodeId}`]);
     rows.push([]);
     rows.push(['Member Results']);
-    rows.push(['ID', 'Label', 'Type', 'b(in)', 'FlexL(ft)', 'd(in)', 'P(kips)', 'V1(kips)', 'M1(ft-k)', 'ft1(psi)', 'fc1(psi)', 'V2(kips)', 'M2(ft-k)', 'ft2(psi)', 'fc2(psi)', 'Status']);
+    rows.push(['ID', 'Label', 'Type', 'b(in)', 'FlexL(ft)', 'd(in)', 'P(kips)', 'V1(kips)', 'M1(ft-k)', 'V2(kips)', 'M2(ft-k)', 'Mmax(ft-k)', 'Gov ft(psi)', 'Gov fc(psi)', 'Status']);
     for (const s of sortedMembers) {
       const m = frameModel.members.find(mm => mm.id === s.memberId)!;
       const f = results.memberForces.find(ff => ff.memberId === s.memberId)!;
@@ -76,9 +70,9 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
         m.id.toString(), m.label, m.orientation, m.thicknessIn.toFixed(1),
         m.flexibleLengthFt.toFixed(2), m.depthIn.toFixed(1),
         f.axialKips.toFixed(2), f.shearStartFaceKips.toFixed(2), f.momentStartFaceFtKips.toFixed(2),
-        s.startFace.maxTensilePsi.toFixed(0), s.startFace.maxCompressivePsi.toFixed(0),
         f.shearEndFaceKips.toFixed(2), f.momentEndFaceFtKips.toFixed(2),
-        s.endFace.maxTensilePsi.toFixed(0), s.endFace.maxCompressivePsi.toFixed(0),
+        f.maxMomentFtKips.toFixed(2),
+        s.governingTensilePsi.toFixed(0), s.governingCompressivePsi.toFixed(0),
         s.status,
       ]);
     }
@@ -173,8 +167,8 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
           <tbody>
             {sortedMembers.map(s => {
               const m = frameModel.members.find(mm => mm.id === s.memberId)!;
-              const maxTRatio = Math.max(s.startFace.maxTensilePsi, s.endFace.maxTensilePsi) / fr;
-              const maxCRatio = Math.max(s.startFace.maxCompressivePsi, s.endFace.maxCompressivePsi) / fc_limit;
+              const govTRatio = s.governingTensilePsi / fr;
+              const govCRatio = s.governingCompressivePsi / fc_limit;
 
               let rowClass = '';
               if (s.status === 'High Compression') rowClass = 'bg-red-900/30';
@@ -184,11 +178,11 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
                 <tr key={s.memberId} className={rowClass}>
                   <td>{m.id}</td>
                   <td className="text-left" style={{ color: 'var(--text-secondary)' }}>{m.label}</td>
-                  <td className={maxTRatio > 1 ? 'text-yellow-400 font-semibold' : ''}>
-                    {(maxTRatio * 100).toFixed(1)}%
+                  <td className={govTRatio > 1 ? 'text-yellow-400 font-semibold' : ''}>
+                    {(govTRatio * 100).toFixed(1)}%
                   </td>
-                  <td className={maxCRatio > 1 ? 'text-red-400 font-semibold' : ''}>
-                    {(maxCRatio * 100).toFixed(1)}%
+                  <td className={govCRatio > 1 ? 'text-red-400 font-semibold' : ''}>
+                    {(govCRatio * 100).toFixed(1)}%
                   </td>
                   <td className={`text-left font-semibold ${
                     s.status === 'OK' ? 'text-green-400' :

@@ -179,33 +179,81 @@ function DiagramSvg({
     return <path d={d} fill="none" stroke={color} strokeWidth={strokeWidth} />;
   }
 
-  // Label key values (start face, end face, extremes)
-  function valueLabels(pts: DiagramPoint[]) {
+  // Label max and min values, plus face values if distinct
+  function valueLabels(pts: DiagramPoint[], color?: string) {
     if (pts.length === 0) return null;
-    const labels: { x: number; y: number; text: string }[] = [];
-    // Start face
+    const fill = color || LABEL_COLOR;
+
+    // Find global max and min across all points
+    let maxPt = pts[0], minPt = pts[0];
+    for (const p of pts) {
+      if (p.value > maxPt.value) maxPt = p;
+      if (p.value < minPt.value) minPt = p;
+    }
+
+    // Collect candidate labels: max, min, start face, end face
+    const candidates: { x: number; y: number; text: string; priority: number }[] = [];
+
+    // Always label the max value (highest priority)
+    if (Math.abs(maxPt.value) > 1e-6) {
+      candidates.push({
+        x: xScale(maxPt.x), y: yScale(maxPt.value),
+        text: formatVal(maxPt.value), priority: 3,
+      });
+    }
+    // Always label the min value
+    if (Math.abs(minPt.value) > 1e-6 && Math.abs(maxPt.value - minPt.value) > 1e-6) {
+      candidates.push({
+        x: xScale(minPt.x), y: yScale(minPt.value),
+        text: formatVal(minPt.value), priority: 3,
+      });
+    }
+
+    // Face values (lower priority — skip if they duplicate max/min)
     const startFacePt = pts.find(p => Math.abs(p.x - rigidStart) < 0.01);
-    if (startFacePt && Math.abs(startFacePt.value) > 1e-6) {
-      labels.push({ x: xScale(startFacePt.x), y: yScale(startFacePt.value), text: startFacePt.value.toFixed(2) });
-    }
-    // End face
     const endFacePt = pts.find(p => Math.abs(p.x - (memberLength - rigidEnd)) < 0.01);
-    if (endFacePt && Math.abs(endFacePt.value) > 1e-6) {
-      labels.push({ x: xScale(endFacePt.x), y: yScale(endFacePt.value), text: endFacePt.value.toFixed(2) });
+    if (startFacePt && Math.abs(startFacePt.value) > 1e-6) {
+      candidates.push({
+        x: xScale(startFacePt.x), y: yScale(startFacePt.value),
+        text: formatVal(startFacePt.value), priority: 1,
+      });
     }
-    // Max absolute in flexible span
-    const flexPts = pts.filter(p => p.x >= rigidStart - 0.01 && p.x <= memberLength - rigidEnd + 0.01);
-    if (flexPts.length > 0) {
-      const extreme = flexPts.reduce((best, p) => Math.abs(p.value) > Math.abs(best.value) ? p : best);
-      if (Math.abs(extreme.value) > 1e-6 && Math.abs(extreme.x - rigidStart) > 0.1 && Math.abs(extreme.x - (memberLength - rigidEnd)) > 0.1) {
-        labels.push({ x: xScale(extreme.x), y: yScale(extreme.value), text: extreme.value.toFixed(2) });
+    if (endFacePt && Math.abs(endFacePt.value) > 1e-6) {
+      candidates.push({
+        x: xScale(endFacePt.x), y: yScale(endFacePt.value),
+        text: formatVal(endFacePt.value), priority: 1,
+      });
+    }
+
+    // Deduplicate and filter overlapping labels
+    const placed: { x: number; y: number; text: string }[] = [];
+    const sorted = [...candidates].sort((a, b) => b.priority - a.priority);
+    const minDist = 30; // min pixel distance between labels
+    for (const c of sorted) {
+      const tooClose = placed.some(p =>
+        Math.abs(p.x - c.x) < minDist && Math.abs(p.y - c.y) < 12
+      );
+      if (!tooClose) {
+        placed.push(c);
       }
     }
-    return labels.map((l, i) => (
-      <text key={i} x={l.x} y={l.y - 5} textAnchor="middle" fontSize="9" fill={LABEL_COLOR} fontWeight="600">
-        {l.text}
-      </text>
-    ));
+
+    return placed.map((l, i) => {
+      // Place label above or below the point depending on position relative to zero
+      const above = l.y <= zeroY;
+      return (
+        <text key={i} x={l.x} y={above ? l.y - 5 : l.y + 11}
+          textAnchor="middle" fontSize="9" fill={fill} fontWeight="600">
+          {l.text}
+        </text>
+      );
+    });
+  }
+
+  function formatVal(v: number): string {
+    if (Math.abs(v) >= 100) return v.toFixed(0);
+    if (Math.abs(v) >= 1) return v.toFixed(2);
+    return v.toFixed(3);
   }
 
   // Y-axis ticks
@@ -298,8 +346,14 @@ function DiagramSvg({
         )}
 
         {/* Value labels */}
-        {valueLabels(points)}
-        {points2 && valueLabels(points2)}
+        {points2 ? (
+          <>
+            {valueLabels(points, TENSION_COLOR)}
+            {valueLabels(points2, COMPRESSION_COLOR)}
+          </>
+        ) : (
+          valueLabels(points)
+        )}
 
         {/* Node markers */}
         <circle cx={xScale(0)} cy={zeroY} r={3} fill={AXIS_COLOR} />
