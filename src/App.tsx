@@ -3,6 +3,7 @@ import './index.css';
 import type { AppInputs, Opening, FrameModel, Member } from './types';
 import { generateFrameModel } from './engine/frameModel';
 import { runAnalysis } from './engine/analysis';
+import { useTheme } from './ThemeContext';
 import InputPanel from './components/InputPanel';
 import ModelTab from './components/ModelTab';
 import ResultsTab from './components/ResultsTab';
@@ -37,6 +38,7 @@ const defaultInputs: AppInputs = {
 type TabId = 'model' | 'results' | 'deflection' | 'summary';
 
 export default function App() {
+  const { theme, toggle: toggleTheme } = useTheme();
   const [inputs, setInputs] = useState<AppInputs>(defaultInputs);
   const [activeTab, setActiveTab] = useState<TabId>('model');
   const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
@@ -160,8 +162,8 @@ export default function App() {
     <div className="flex h-screen w-screen overflow-hidden" style={{ userSelect: isDragging ? 'none' : 'auto' }}>
       {/* Left Panel - Inputs */}
       <div
-        className="flex-shrink-0 overflow-y-auto bg-[#0f1629] border-r border-[#2a3a5c]"
-        style={{ width: dividerX }}
+        className="flex-shrink-0 overflow-y-auto border-r"
+        style={{ width: dividerX, background: 'var(--bg-panel)', borderColor: 'var(--border)' }}
       >
         <InputPanel
           inputs={inputs}
@@ -173,27 +175,41 @@ export default function App() {
 
       {/* Resizable Divider */}
       <div
-        className="flex-shrink-0 w-1.5 bg-[#2a3a5c] cursor-col-resize hover:bg-[#4a9eff] transition-colors"
+        className="flex-shrink-0 w-1.5 cursor-col-resize transition-colors"
+        style={{ background: 'var(--border)' }}
         onMouseDown={handleMouseDown}
       />
 
       {/* Right Panel - Tabs */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-[#1a1a2e]">
+      <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--bg-body)' }}>
         {/* Tab Bar */}
-        <div className="flex border-b border-[#2a3a5c] bg-[#0f1629]">
+        <div className="flex items-center border-b" style={{ background: 'var(--bg-panel)', borderColor: 'var(--border)' }}>
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 ${
                 activeTab === tab.id
-                  ? 'text-[#4a9eff] border-[#4a9eff] bg-[#1a1a2e]'
-                  : 'text-[#8899aa] border-transparent hover:text-[#c0c8d0] hover:bg-[#16213e]'
+                  ? 'border-[var(--accent)]'
+                  : 'border-transparent'
               }`}
+              style={{
+                color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-secondary)',
+                background: activeTab === tab.id ? 'var(--bg-body)' : undefined,
+              }}
             >
               {tab.label}
             </button>
           ))}
+          <div className="flex-1" />
+          <button
+            onClick={toggleTheme}
+            className="mr-3 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+            style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          >
+            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          </button>
         </div>
 
         {/* Validation Errors */}

@@ -358,19 +358,30 @@ export function generateFrameModel(
   // Find the bottom spandrel centerline Y
   const bottomStripY = hStripYRanges.length > 0 ? (hStripYRanges[0].bottom + hStripYRanges[0].top) / 2 : 0;
 
-  // Left support: pin (dx, dy restrained)
-  const leftSupportNode = getOrCreateNode(supports.leftXFt, bottomStripY, { dx: true, dy: true, rz: false });
-
-  // Right support: roller (dy restrained)
-  const rightSupportNode = getOrCreateNode(supports.rightXFt, bottomStripY, { dx: false, dy: true, rz: false });
-
   // If support nodes don't coincide with existing joint nodes, add connecting members
   // Find nearest joint nodes along the bottom spandrel for each support
   const bottomStripDepthFt = hStripYRanges.length > 0 ? hStripYRanges[0].top - hStripYRanges[0].bottom : panel.heightFt;
   const bottomStripDepthIn = bottomStripDepthFt * 12;
 
-  function addSupportConnector(supportNode: Node, label: string) {
-    // Find the nearest existing joint node on the bottom strip
+  function addSupportWithConnector(supportXFt: number, restraints: { dx: boolean; dy: boolean; rz: boolean }, label: string) {
+    // Check if the support falls within a pier's rigid zone
+    const containingPier = pierXRanges.find(p => supportXFt >= p.left - 0.001 && supportXFt <= p.right + 0.001);
+
+    if (containingPier) {
+      // Support is within a pier - apply restraints to the pier's centerline node
+      const pierCx = (containingPier.left + containingPier.right) / 2;
+      const pierNode = nodeMap.get(`${pierCx.toFixed(6)},${bottomStripY.toFixed(6)}`);
+      if (pierNode) {
+        pierNode.restraints.dx = pierNode.restraints.dx || restraints.dx;
+        pierNode.restraints.dy = pierNode.restraints.dy || restraints.dy;
+        pierNode.restraints.rz = pierNode.restraints.rz || restraints.rz;
+        return;
+      }
+    }
+
+    // Support is NOT within a pier - create a support node and connect it
+    const supportNode = getOrCreateNode(supportXFt, bottomStripY, restraints);
+
     const bottomNodes = nodes.filter(n =>
       Math.abs(n.y - bottomStripY) < 0.001 && n.id !== supportNode.id
     );
@@ -380,12 +391,9 @@ export function generateFrameModel(
     // Check if the support node coincides with a joint node
     const coincident = bottomNodes.find(n => Math.abs(n.x - supportNode.x) < 0.001);
     if (coincident) {
-      // Merge restraints into existing node
       coincident.restraints.dx = coincident.restraints.dx || supportNode.restraints.dx;
       coincident.restraints.dy = coincident.restraints.dy || supportNode.restraints.dy;
       coincident.restraints.rz = coincident.restraints.rz || supportNode.restraints.rz;
-
-      // Remove the duplicate support node
       const idx = nodes.indexOf(supportNode);
       if (idx >= 0 && supportNode.id !== coincident.id) {
         nodes.splice(idx, 1);
@@ -401,8 +409,6 @@ export function generateFrameModel(
       const nearNode = leftNodes[0];
       const dist = supportNode.x - nearNode.x;
 
-      // Determine rigid offsets
-      // Find what pier this node belongs to and its half-width
       const nearPier = pierXRanges.find(p => {
         const cx = (p.left + p.right) / 2;
         return Math.abs(cx - nearNode.x) < 0.001;
@@ -411,15 +417,12 @@ export function generateFrameModel(
       const flexLen = dist - nearOffset;
 
       if (flexLen > 0) {
-        // Check if there's already a member between these nodes that this connector replaces
-        // (i.e., if the support splits an existing member)
         const existingIdx = members.findIndex(m =>
           m.orientation === 'horizontal' &&
           ((m.startNodeId === nearNode.id && nodes.find(n => n.id === m.endNodeId)!.x > supportNode.x) ||
             (m.endNodeId === nearNode.id && nodes.find(n => n.id === m.startNodeId)!.x > supportNode.x))
         );
 
-        // Add connector member from nearNode to supportNode
         members.push({
           id: memberIdCounter++,
           label: `${label} Connector Left`,
@@ -437,23 +440,19 @@ export function generateFrameModel(
           orientation: 'horizontal',
         });
 
-        // If there was an existing member that spans through this support, split it
         if (existingIdx >= 0 && rightNodes.length > 0) {
           const existingMember = members[existingIdx];
           const otherNodeId = existingMember.startNodeId === nearNode.id ? existingMember.endNodeId : existingMember.startNodeId;
           const otherNode = nodes.find(n => n.id === otherNodeId)!;
 
-          // Remove the old member
           members.splice(existingIdx, 1);
 
-          // Find pier for the other node
           const otherPier = pierXRanges.find(p => {
             const cx = (p.left + p.right) / 2;
             return Math.abs(cx - otherNode.x) < 0.001;
           });
           const otherOffset = otherPier ? (otherPier.right - otherPier.left) / 2 : 0;
 
-          // Add connector from support to other node
           const dist2 = otherNode.x - supportNode.x;
           const flexLen2 = dist2 - otherOffset;
           if (flexLen2 > 0) {
@@ -507,8 +506,10 @@ export function generateFrameModel(
     }
   }
 
-  addSupportConnector(leftSupportNode, 'Left Support');
-  addSupportConnector(rightSupportNode, 'Right Support');
+  // Left support: pin (dx, dy restrained)
+  addSupportWithConnector(supports.leftXFt, { dx: true, dy: true, rz: false }, 'Left Support');
+  // Right support: roller (dy restrained)
+  addSupportWithConnector(supports.rightXFt, { dx: false, dy: true, rz: false }, 'Right Support');
 
   // Now handle the case where supports split an existing bottom spandrel member
   // Remove any duplicate/overlapping horizontal members on the bottom strip

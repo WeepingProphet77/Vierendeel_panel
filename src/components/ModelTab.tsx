@@ -61,7 +61,6 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
 
   const activeMember = members.find(m => m.id === (hoveredMember ?? selectedMemberId));
 
-  // Compute max thickness for stroke scaling
   const maxThickness = Math.max(...members.map(m => m.thicknessIn), 1);
   const minStroke = 1.5;
   const maxStroke = 4;
@@ -69,20 +68,19 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
   return (
     <div>
       {/* SVG Visualization */}
-      <div className="bg-[#0f1629] rounded border border-[#2a3a5c] mb-4 overflow-auto flex justify-center">
+      <div className="rounded mb-4 overflow-auto flex justify-center" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)' }}>
         <svg
           width={svgWidth}
           height={svgHeight}
           viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
           className="block"
         >
-          {/* Flip Y axis: panel bottom is y=0, SVG top is y=0 */}
           <g transform={`translate(0, ${inputs.panel.heightFt}) scale(1, -1)`}>
             {/* Panel outline */}
             <rect
               x={0} y={0}
               width={inputs.panel.widthFt} height={inputs.panel.heightFt}
-              fill="#2a3a5c" fillOpacity={0.3} stroke="#4a5568" strokeWidth={1.5 / scale}
+              fill="var(--svg-panel-fill)" fillOpacity={0.3} stroke="var(--svg-panel-stroke)" strokeWidth={1.5 / scale}
             />
 
             {/* Openings */}
@@ -93,7 +91,7 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
                 y={o.centerYFt - o.heightFt / 2}
                 width={o.widthFt}
                 height={o.heightFt}
-                fill="#0f1629" stroke="#667788" strokeWidth={1 / scale}
+                fill="var(--svg-opening-fill)" stroke="var(--svg-opening-stroke)" strokeWidth={1 / scale}
               />
             ))}
 
@@ -109,7 +107,6 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
                 : isHorizontal ? '#4a9eff' : '#44cc88';
               const strokeW = minStroke + (m.thicknessIn / maxThickness) * (maxStroke - minStroke);
 
-              // Compute rigid zone endpoints
               const dx = en.x - sn.x;
               const dy = en.y - sn.y;
               const len = Math.sqrt(dx * dx + dy * dy);
@@ -128,7 +125,7 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
                   onClick={() => onSelectMember(m.id === selectedMemberId ? null : m.id)}
                   style={{ cursor: 'pointer' }}
                 >
-                  {/* Rigid zones - thicker */}
+                  {/* Rigid zones */}
                   <line x1={sn.x} y1={sn.y} x2={rigidStartX} y2={rigidStartY}
                     stroke={color} strokeWidth={(strokeW + 2) / scale} opacity={0.7} />
                   <line x1={rigidEndX} y1={rigidEndY} x2={en.x} y2={en.y}
@@ -158,7 +155,7 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
                 <circle cx={n.x} cy={n.y} r={4 / scale} fill="#ff6644" stroke="#ffffff" strokeWidth={1 / scale} />
                 <g transform={`translate(${n.x}, ${n.y}) scale(1, -1)`}>
                   <text x={6 / scale} y={-4 / scale}
-                    fontSize={7 / scale} fill="#ff9977" fontWeight="bold">
+                    fontSize={7 / scale} fill="var(--svg-node-label)" fontWeight="bold">
                     {n.id}
                   </text>
                 </g>
@@ -180,9 +177,9 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
 
       {/* Member info tooltip */}
       {activeMember && (
-        <div className="mb-4 p-3 bg-[#16213e] rounded border border-[#2a3a5c] text-xs">
-          <div className="font-semibold text-[#4a9eff] mb-1">Member {activeMember.id}: {activeMember.label}</div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[#8899aa]">
+        <div className="mb-4 p-3 rounded text-xs" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+          <div className="font-semibold mb-1" style={{ color: 'var(--accent)' }}>Member {activeMember.id}: {activeMember.label}</div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-secondary)' }}>
             <div>Type: {activeMember.orientation}</div>
             <div>CL Length: {activeMember.centerlineLengthFt.toFixed(3)} ft</div>
             <div>Flexible Length: {activeMember.flexibleLengthFt.toFixed(3)} ft</div>
@@ -198,7 +195,7 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
 
       {/* Node Table */}
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-[#8899aa] mb-2">Nodes</h3>
+        <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Nodes</h3>
         <div className="overflow-x-auto">
           <table>
             <thead>
@@ -215,7 +212,7 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
                   <td>{n.id}</td>
                   <td>{n.x.toFixed(3)}</td>
                   <td>{n.y.toFixed(3)}</td>
-                  <td className="text-left text-[#8899aa]">
+                  <td className="text-left" style={{ color: 'var(--text-secondary)' }}>
                     {[n.restraints.dx && 'dx', n.restraints.dy && 'dy', n.restraints.rz && 'rz'].filter(Boolean).join(', ') || '-'}
                   </td>
                 </tr>
@@ -227,7 +224,7 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
 
       {/* Member Table */}
       <div>
-        <h3 className="text-sm font-semibold text-[#8899aa] mb-2">Members</h3>
+        <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Members</h3>
         <div className="overflow-x-auto">
           <table>
             <thead>
@@ -251,11 +248,12 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
               {members.map(m => (
                 <tr
                   key={m.id}
-                  className={`cursor-pointer ${m.id === selectedMemberId ? 'bg-blue-900/30' : 'hover:bg-[#16213e]'}`}
+                  className={`cursor-pointer ${m.id === selectedMemberId ? 'bg-blue-900/30' : ''}`}
+                  style={m.id !== selectedMemberId ? { } : undefined}
                   onClick={() => onSelectMember(m.id === selectedMemberId ? null : m.id)}
                 >
                   <td>{m.id}</td>
-                  <td className="text-left text-[#8899aa] max-w-48 truncate" title={m.label}>{m.label}</td>
+                  <td className="text-left max-w-48 truncate" style={{ color: 'var(--text-secondary)' }} title={m.label}>{m.label}</td>
                   <td className="text-left">{m.orientation === 'horizontal' ? 'H' : 'V'}</td>
                   <td>{m.startNodeId}</td>
                   <td>{m.endNodeId}</td>
