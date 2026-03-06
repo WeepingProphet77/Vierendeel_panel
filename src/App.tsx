@@ -247,6 +247,8 @@ export default function App() {
               frameModel={frameModel}
               results={analysisResult}
               material={inputs.material}
+              selectedMemberId={selectedMemberId}
+              onSelectMember={setSelectedMemberId}
             />
           )}
           {activeTab === 'deflection' && (

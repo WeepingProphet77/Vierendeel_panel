@@ -570,6 +570,7 @@ export function runAnalysis(
       shearEndFaceKips: V_face_end,
       momentStartFaceFtKips: M_face_start,
       momentEndFaceFtKips: M_face_end,
+      uniformLoadKipPerFt: w,
     });
 
     // Stress calculations
