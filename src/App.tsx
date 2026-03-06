@@ -14,14 +14,18 @@ function getDefaultOpenings(numOpenings: number, panelWidth: number, panelHeight
   const openings: Opening[] = [];
   const openingWidth = Math.min(6, (panelWidth - 4 * (numOpenings + 1)) / numOpenings);
   const openingHeight = Math.max(3, panelHeight - 6);
-  const spacing = panelWidth / (numOpenings + 1);
+  // Distribute openings evenly: compute equal gaps between panel edges and openings
+  const totalGap = panelWidth - numOpenings * openingWidth;
+  const gap = totalGap / (numOpenings + 1);
+  const bottomSetback = (panelHeight - openingHeight) / 2;
 
   for (let i = 0; i < numOpenings; i++) {
+    const leftEdge = gap + i * (openingWidth + gap);
     openings.push({
       widthFt: Math.round(openingWidth * 10) / 10,
       heightFt: Math.round(openingHeight * 10) / 10,
-      centerXFt: Math.round(spacing * (i + 1) * 10) / 10,
-      centerYFt: Math.round((panelHeight / 2) * 10) / 10,
+      centerXFt: Math.round((leftEdge + openingWidth / 2) * 10) / 10,
+      centerYFt: Math.round((bottomSetback + openingHeight / 2) * 10) / 10,
     });
   }
   return openings;
