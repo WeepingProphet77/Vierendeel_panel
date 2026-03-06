@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { FrameModel, AnalysisResults, AppInputs } from '../types';
 
 interface Props {
@@ -8,42 +8,44 @@ interface Props {
 }
 
 export default function SummaryTab({ frameModel, results, inputs }: Props) {
-  if (!results) {
-    return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available.</div>;
-  }
-
   const fr = 7.5 * Math.sqrt(inputs.material.fcPsi);
   const fc_limit = 0.60 * inputs.material.fcPsi;
 
   let govTensile = { memberId: 0, location: '', stress: 0, ratio: 0 };
   let govCompressive = { memberId: 0, location: '', stress: 0, ratio: 0 };
 
-  for (const s of results.memberStresses) {
-    for (const [loc, face] of [['start', s.startFace], ['end', s.endFace]] as const) {
-      const tRatio = face.maxTensilePsi / fr;
-      if (tRatio > govTensile.ratio) {
-        govTensile = { memberId: s.memberId, location: `${loc} face`, stress: face.maxTensilePsi, ratio: tRatio };
-      }
-      const cRatio = face.maxCompressivePsi / fc_limit;
-      if (cRatio > govCompressive.ratio) {
-        govCompressive = { memberId: s.memberId, location: `${loc} face`, stress: face.maxCompressivePsi, ratio: cRatio };
+  if (results) {
+    for (const s of results.memberStresses) {
+      for (const [loc, face] of [['start', s.startFace], ['end', s.endFace]] as const) {
+        const tRatio = face.maxTensilePsi / fr;
+        if (tRatio > govTensile.ratio) {
+          govTensile = { memberId: s.memberId, location: `${loc} face`, stress: face.maxTensilePsi, ratio: tRatio };
+        }
+        const cRatio = face.maxCompressivePsi / fc_limit;
+        if (cRatio > govCompressive.ratio) {
+          govCompressive = { memberId: s.memberId, location: `${loc} face`, stress: face.maxCompressivePsi, ratio: cRatio };
+        }
       }
     }
   }
 
-  const sortedMembers = [...results.memberStresses].sort((a, b) => {
-    const aMax = Math.max(
-      a.startFace.maxTensilePsi / fr, a.endFace.maxTensilePsi / fr,
-      a.startFace.maxCompressivePsi / fc_limit, a.endFace.maxCompressivePsi / fc_limit
-    );
-    const bMax = Math.max(
-      b.startFace.maxTensilePsi / fr, b.endFace.maxTensilePsi / fr,
-      b.startFace.maxCompressivePsi / fc_limit, b.endFace.maxCompressivePsi / fc_limit
-    );
-    return bMax - aMax;
-  });
+  const sortedMembers = useMemo(() => {
+    if (!results) return [];
+    return [...results.memberStresses].sort((a, b) => {
+      const aMax = Math.max(
+        a.startFace.maxTensilePsi / fr, a.endFace.maxTensilePsi / fr,
+        a.startFace.maxCompressivePsi / fc_limit, a.endFace.maxCompressivePsi / fc_limit
+      );
+      const bMax = Math.max(
+        b.startFace.maxTensilePsi / fr, b.endFace.maxTensilePsi / fr,
+        b.startFace.maxCompressivePsi / fc_limit, b.endFace.maxCompressivePsi / fc_limit
+      );
+      return bMax - aMax;
+    });
+  }, [results, fr, fc_limit]);
 
   const exportCSV = useCallback(() => {
+    if (!results) return;
     const rows: string[][] = [];
     rows.push(['Vierendeel Frame Analyzer - Summary Report']);
     rows.push([]);
@@ -90,6 +92,10 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
     a.click();
     URL.revokeObjectURL(url);
   }, [results, frameModel, inputs, sortedMembers]);
+
+  if (!results) {
+    return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available.</div>;
+  }
 
   return (
     <div>

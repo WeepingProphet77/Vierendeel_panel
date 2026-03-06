@@ -126,22 +126,27 @@ function pointsToClosedPath(pts: { x: number; y: number }[]): string {
 }
 
 export default function DeflectionTab({ frameModel, results, inputs }: Props) {
-  if (!results) {
-    return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available.</div>;
-  }
-
   const { nodes, members } = frameModel;
-  const nodeIndex = new Map<number, number>();
-  nodes.forEach((n, i) => nodeIndex.set(n.id, i));
 
-  const maxDisp = Math.max(
-    ...nodes.map(n => {
-      const ni = nodeIndex.get(n.id)! * 3;
-      return Math.sqrt(
-        results.displacements[ni] ** 2 + results.displacements[ni + 1] ** 2
-      );
-    })
-  );
+  const nodeIndex = useMemo(() => {
+    const map = new Map<number, number>();
+    nodes.forEach((n, i) => map.set(n.id, i));
+    return map;
+  }, [nodes]);
+
+  const getNode = (id: number): Node => nodes.find(n => n.id === id)!;
+
+  const maxDisp = useMemo(() => {
+    if (!results) return 0;
+    return Math.max(
+      ...nodes.map(n => {
+        const ni = nodeIndex.get(n.id)! * 3;
+        return Math.sqrt(
+          results.displacements[ni] ** 2 + results.displacements[ni + 1] ** 2
+        );
+      })
+    );
+  }, [nodes, nodeIndex, results]);
 
   const targetDisp = inputs.panel.heightFt * 0.07;
   const autoScale = maxDisp > 0 ? targetDisp / maxDisp : 100;
@@ -149,24 +154,12 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
 
   const [scaleFactor, setScaleFactor] = useState<number>(defaultScale || 500);
 
-  const pad = 2;
-  const viewBox = {
-    minX: -pad,
-    minY: -pad,
-    width: inputs.panel.widthFt + pad * 2,
-    height: inputs.panel.heightFt + pad * 2,
-  };
-  const scale = Math.min(800 / viewBox.width, 500 / viewBox.height);
-  const svgWidth = viewBox.width * scale;
-  const svgHeight = viewBox.height * scale;
-
-  const getNode = (id: number): Node => nodes.find(n => n.id === id)!;
-
   const nSamplesPerEdge = 24;
   const nPtsPerMember = 20;
 
   // Deformed member curves with cubic Hermite interpolation
   const memberCurves = useMemo(() => {
+    if (!results) return [];
     return members.map(m => {
       const sn = getNode(m.startNodeId);
       const en = getNode(m.endNodeId);
@@ -182,10 +175,12 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
       );
       return { id: m.id, pts };
     });
-  }, [members, nodes, results, scaleFactor]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members, nodes, nodeIndex, results, scaleFactor]);
 
   // Deformed panel outline (4 edges, each sampled with IDW interpolation)
   const deformedOutlinePath = useMemo(() => {
+    if (!results) return '';
     const W = inputs.panel.widthFt;
     const H = inputs.panel.heightFt;
     const edges: [number, number, number, number][] = [
@@ -200,10 +195,11 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
       allPts.push(...(allPts.length > 0 ? edgePts.slice(1) : edgePts));
     }
     return pointsToClosedPath(allPts);
-  }, [nodes, results, scaleFactor, inputs.panel]);
+  }, [nodes, nodeIndex, results, scaleFactor, inputs.panel]);
 
   // Deformed openings (each opening = 4 edges, sampled)
   const deformedOpeningPaths = useMemo(() => {
+    if (!results) return [];
     return inputs.openings.map(o => {
       const left = o.centerXFt - o.widthFt / 2;
       const right = o.centerXFt + o.widthFt / 2;
@@ -222,10 +218,11 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
       }
       return pointsToClosedPath(allPts);
     });
-  }, [nodes, results, scaleFactor, inputs.openings]);
+  }, [nodes, nodeIndex, results, scaleFactor, inputs.openings]);
 
   // Deformed node positions
   const deformedNodes = useMemo(() => {
+    if (!results) return [];
     return nodes.map(n => {
       const ni = nodeIndex.get(n.id)! * 3;
       return {
@@ -234,7 +231,22 @@ export default function DeflectionTab({ frameModel, results, inputs }: Props) {
         y: n.y + results.displacements[ni + 1] * scaleFactor,
       };
     });
-  }, [nodes, results, scaleFactor]);
+  }, [nodes, nodeIndex, results, scaleFactor]);
+
+  if (!results) {
+    return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available.</div>;
+  }
+
+  const pad = 2;
+  const viewBox = {
+    minX: -pad,
+    minY: -pad,
+    width: inputs.panel.widthFt + pad * 2,
+    height: inputs.panel.heightFt + pad * 2,
+  };
+  const scale = Math.min(800 / viewBox.width, 500 / viewBox.height);
+  const svgWidth = viewBox.width * scale;
+  const svgHeight = viewBox.height * scale;
 
   return (
     <div>
