@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { FrameModel, AnalysisResults, MaterialProperties } from '../types';
 import MemberDiagrams from './MemberDiagrams';
+import PrestressDesignModal from './PrestressDesignModal';
 
 interface Props {
   frameModel: FrameModel;
@@ -10,6 +12,8 @@ interface Props {
 }
 
 export default function ResultsTab({ frameModel, results, material, selectedMemberId, onSelectMember }: Props) {
+  const [prestressModalOpen, setPrestressModalOpen] = useState(false);
+
   if (!results) {
     return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available. Check model for errors.</div>;
   }
@@ -108,8 +112,19 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
             forces={selectedForces}
             stresses={selectedStresses}
             material={material}
+            onOpenPrestressDesign={() => setPrestressModalOpen(true)}
           />
         </div>
+      )}
+
+      {prestressModalOpen && selectedMember && selectedForces && selectedStresses && (
+        <PrestressDesignModal
+          member={selectedMember}
+          forces={selectedForces}
+          stresses={selectedStresses}
+          material={material}
+          onClose={() => setPrestressModalOpen(false)}
+        />
       )}
 
       {/* Stress reference */}
