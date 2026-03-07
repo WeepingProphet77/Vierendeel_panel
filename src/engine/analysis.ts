@@ -500,68 +500,48 @@ export function runAnalysis(
 
     // Forces at node centerlines
     const P_start = f_total[0]; // axial at start node (tension +)
-    const V_start = f_total[1]; // shear at start node
+    const V_start = f_total[1]; // shear at start node (includes lumped rigid zone weight)
     const M_start = f_total[2]; // moment at start node (ft-kips)
-    const V_end = f_total[4];
-    const M_end = f_total[5];
 
     // Forces at face of joint (critical section)
-    // Using statics from node to face:
-    // We use the approach where w=0 on rigid zone (weight was lumped to nodes)
-    // So face forces are:
-    // V_face_start = V_start (shear constant in rigid zone)
-    // M_face_start = M_start + V_start * a_off
-    // V_face_end = V_end (shear constant in rigid zone)
-    // M_face_end = M_end - V_end * b_off (measuring inward from end node)
-    // Wait, need to be careful with signs. At end node, the rigid zone goes INWARD
-    // (toward the flexible portion). Going from end node toward the face:
-    // M_face_end = M_end + V_end * b_off (if V_end has the correct sign)
-    // Actually for end node, measuring from end node INWARD by b_off:
-    // The shear at end is V_end. Going inward (negative local x direction from end):
-    // M_face_end = M_end - V_end * b_off
-    // Hmm, let me think about this more carefully.
-    // At start: going from start node in +x direction by a_off to reach the face:
-    //   V_face = V_start, M_face = M_start + V_start * a_off
-    // At end: going from end node in -x direction by b_off to reach the face:
-    //   V_face = V_end, M_face = M_end + V_end * (-b_off) = M_end - V_end * b_off
-    // Wait, that's not right either. Let me use free body diagram.
     //
-    // Cut at start face. Consider the piece from start node to the cut.
-    // Equilibrium of this piece:
-    //   Sum Fy: V_start - V_face_start = 0  =>  V_face_start = V_start (no load on rigid zone)
-    //   Sum M about cut: M_start + V_start * a - M_face_start = 0
-    //   => M_face_start = M_start + V_start * a
+    // The rigid zone weights were lumped to the nodes in the FEF. When recovering
+    // internal forces, we must account for this: the internal shear at the start face
+    // is the node shear MINUS the lumped rigid zone weight (which is a concentrated
+    // downward load at the node, on the node side of the face cut).
     //
-    // Cut at end face. Consider the piece from end node to the cut.
-    // The sign convention for end node forces: V_end is the shear at the end,
-    // and M_end is the moment. Going from end node INWARD by distance b:
-    //   Sum Fy: -V_end + V_face_end = 0  =>  V_face_end = V_end
-    //   Sum M about cut: -M_end + V_end * b + M_face_end = 0
-    //   => M_face_end = M_end - V_end * b
+    // Free body of start rigid zone (node to face):
+    //   V_start (upward, from stiffness) - a_weight (downward, lumped load) = V_face_start
+    //   M_face_start = M_start + V_face_start * a_off
     //
-    // Hmm, the sign depends on the convention for end node forces.
-    // In the stiffness matrix convention, end node forces are the forces the member
-    // exerts on the node (or vice versa). Let me just use:
-    // M_face_start = M_start + V_start * a_off
-    // M_face_end = M_end + V_end * b_off (using V_end which has appropriate sign from stiffness)
-    //
-    // Actually for the end node, the rigid offset is measured from the node TOWARD the
-    // flexible span. The internal forces at the end face can be found by equilibrium
-    // from the end node side. The moment at the face equals the end moment plus the
-    // shear times the offset. Since V_end is the force the member applies at the end node
-    // and it's in the opposite direction from V_start's convention for the same member:
+    // For the end face, derive from equilibrium of the flexible span to ensure
+    // the parabolic moment distribution is consistent:
+    //   V_face_end = V_face_start - w * Lf
+    //   M_face_end = M_face_start + V_face_start * Lf - w * Lf^2 / 2
 
-    const V_face_start = V_start;
-    const M_face_start = M_start + V_start * a_off;
-    const V_face_end = V_end;
-    const M_face_end = M_end + V_end * b_off;
+    let V_face_start: number;
+    let M_face_start: number;
+    let V_face_end: number;
+    let M_face_end: number;
 
-    // Axial is approximately constant
-    // Actually in stiffness convention: P_start is the axial at start node (+ = tension pulling away from node)
-    // and P_end is at end node (+ = tension pulling away from that node too, which is opposite direction)
-    // So the internal axial force in the member = P_start (compression positive at start means force INTO member)
-    // Let's just use P_start as the member axial force. Tension positive means pulling the member apart at start.
-    // For a horizontal member under gravity only, axial should be small.
+    if (member.orientation === 'horizontal') {
+      const bFt = member.thicknessIn / 12;
+      const dFt = member.depthIn / 12;
+      const a_weight = unitWeightKcf * bFt * dFt * a_off;
+
+      V_face_start = V_start - a_weight;
+      M_face_start = M_start + V_face_start * a_off;
+
+      // End face from equilibrium of flexible span
+      V_face_end = V_face_start - w * Lf;
+      M_face_end = M_face_start + V_face_start * Lf - w * Lf * Lf / 2;
+    } else {
+      // Vertical members: no transverse UDL, no rigid zone weight issue
+      V_face_start = V_start;
+      M_face_start = M_start + V_start * a_off;
+      V_face_end = f_total[4];
+      M_face_end = f_total[5] + f_total[4] * b_off;
+    }
 
     // Compute peak moment in the flexible span for horizontal members with UDL.
     // The moment is parabolic: M(x_flex) = M_face_start + V_face_start * x_flex - w * x_flex^2 / 2

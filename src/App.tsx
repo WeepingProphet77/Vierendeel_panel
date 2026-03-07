@@ -33,7 +33,10 @@ function getDefaultOpenings(numOpenings: number, panelWidth: number, panelHeight
 
 const defaultInputs: AppInputs = {
   panel: { widthFt: 30, heightFt: 12, defaultThicknessIn: 6, numOpenings: 2 },
-  openings: getDefaultOpenings(2, 30, 12),
+  openings: [
+    { widthFt: 12, heightFt: 8, centerXFt: 8, centerYFt: 6 },
+    { widthFt: 12, heightFt: 8, centerXFt: 22, centerYFt: 6 },
+  ],
   supports: { leftXFt: 1.0, rightXFt: 29.0 },
   material: { unitWeightPcf: 150, fcPsi: 5000, ePsi: 57000 * Math.sqrt(5000) },
   loading: { glassWeightPsf: 15, superimposedDeadLoadPsf: 0 },
