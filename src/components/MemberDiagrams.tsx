@@ -6,6 +6,7 @@ interface Props {
   forces: MemberForces;
   stresses: MemberStresses;
   material: MaterialProperties;
+  onOpenPrestressDesign?: () => void;
 }
 
 interface DiagramPoint {
@@ -381,7 +382,7 @@ function DiagramSvg({
   );
 }
 
-export default function MemberDiagrams({ member, forces, stresses, material }: Props) {
+export default function MemberDiagrams({ member, forces, stresses, material, onOpenPrestressDesign }: Props) {
   const diagWidth = 600;
   const diagHeight = 160;
 
@@ -400,8 +401,16 @@ export default function MemberDiagrams({ member, forces, stresses, material }: P
 
   return (
     <div className="p-3 rounded" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)' }}>
-      <div className="font-semibold text-sm mb-1" style={{ color: 'var(--accent)' }}>
-        Member {member.id}: {member.label}
+      <div className="flex items-center justify-between mb-1">
+        <div className="font-semibold text-sm" style={{ color: 'var(--accent)' }}>
+          Member {member.id}: {member.label}
+        </div>
+        {onOpenPrestressDesign && (
+          <button onClick={onOpenPrestressDesign} className="text-xs px-3 py-1 rounded font-semibold"
+            style={{ background: 'var(--accent)', color: 'white' }}>
+            Prestress Design
+          </button>
+        )}
       </div>
       <div className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
         {member.orientation} | CL={member.centerlineLengthFt.toFixed(2)} ft |

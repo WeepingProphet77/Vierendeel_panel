@@ -117,3 +117,91 @@ export interface AppInputs {
   material: MaterialProperties;
   loading: Loading;
 }
+
+// ─── Prestress Design Types ─────────────────────────────────────────────────
+
+export interface SteelPreset {
+  id: string;
+  name: string;
+  description: string;
+  category: 'mild' | 'prestressing';
+  Es: number;       // ksi
+  fpu: number;      // ksi
+  fpy: number;      // ksi
+  stressCap: number; // ksi -- fpy for mild, fpu for prestressing
+  Q: number;
+  R: number;
+  K: number;
+  defaultFse: number; // ksi
+}
+
+export interface SteelLayer {
+  id: number;
+  steelPresetId: string;
+  area: number;       // in^2
+  depth: number;      // in from extreme compression fiber
+  fse: number;        // ksi, effective prestress (0 for mild steel)
+  steel: SteelPreset; // resolved preset reference
+}
+
+export interface PrestressSectionInput {
+  sectionType: 'rectangular' | 'tbeam' | 'doubletee' | 'hollowcore';
+  bf: number;   // flange width, in
+  bw: number;   // web width, in
+  hf: number;   // flange depth, in
+  h: number;    // total depth, in
+  fc: number;   // f'c, ksi
+  // Double tee parameters
+  numStems?: number;
+  stemWidth?: number;
+  // Hollow core parameters
+  numVoids?: number;
+  voidDiameter?: number;
+  voidCenterDepth?: number;
+}
+
+export interface PrestressDesignResult {
+  c: number;           // neutral axis depth, in
+  a: number;           // stress block depth, in
+  beta1: number;
+  Cc: number;          // concrete compression force, kips
+  Mn: number;          // nominal moment, kip-in
+  MnFt: number;        // nominal moment, kip-ft
+  phi: number;         // strength reduction factor
+  phiMn: number;       // design moment capacity, kip-in
+  phiMnFt: number;     // design moment capacity, kip-ft
+  epsilonT: number;    // net tensile strain
+  cOverD: number;      // c/d ratio
+  ductile: boolean;
+  transition: boolean;
+  layerResults: LayerResult[];
+  cracking: CrackingResult;
+}
+
+export interface LayerResult {
+  strain: number;
+  stress: number;  // ksi
+  force: number;   // kips
+  depth: number;
+  area: number;
+  fse: number;
+}
+
+export interface CrackingResult {
+  P: number;             // effective prestress force, kips
+  fpc: number;           // average precompressive stress, ksi
+  e: number;             // eccentricity, in
+  fr: number;            // modulus of rupture, ksi
+  Mcr: number;           // cracking moment, kip-in
+  McrFt: number;         // cracking moment, kip-ft
+  passesMinStrength: boolean;  // phiMn >= 1.2*Mcr
+  sectionProps: { A: number; yCg: number; Ig: number; yb: number; Sb: number };
+}
+
+export interface MemberPrestressDesign {
+  memberId: number;
+  memberLabel: string;
+  section: PrestressSectionInput;
+  layers: SteelLayer[];
+  result: PrestressDesignResult | null;
+}
