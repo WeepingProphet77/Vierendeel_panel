@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import './index.css';
-import type { AppInputs, Opening, FrameModel, Member } from './types';
+import type { AppInputs, Opening, FrameModel, Member, SavedPrestressDesign } from './types';
 import { generateFrameModel } from './engine/frameModel';
 import { runAnalysis } from './engine/analysis';
 import { useTheme } from './useTheme';
@@ -52,6 +52,19 @@ export default function App() {
   const [dividerX, setDividerX] = useState(360);
   const [isDragging, setIsDragging] = useState(false);
   const [previousMembers, setPreviousMembers] = useState<Member[] | undefined>(undefined);
+  const [prestressDesigns, setPrestressDesigns] = useState<Record<number, SavedPrestressDesign>>({});
+
+  const handleSavePrestressDesign = useCallback((design: SavedPrestressDesign) => {
+    setPrestressDesigns(prev => ({ ...prev, [design.memberId]: design }));
+  }, []);
+
+  const handleClearPrestressDesign = useCallback((memberId: number) => {
+    setPrestressDesigns(prev => {
+      const next = { ...prev };
+      delete next[memberId];
+      return next;
+    });
+  }, []);
 
   // Generate frame model
   const frameModel: FrameModel = useMemo(() => {
@@ -252,6 +265,9 @@ export default function App() {
               material={inputs.material}
               selectedMemberId={selectedMemberId}
               onSelectMember={setSelectedMemberId}
+              prestressDesigns={prestressDesigns}
+              onSavePrestressDesign={handleSavePrestressDesign}
+              onClearPrestressDesign={handleClearPrestressDesign}
             />
           )}
           {activeTab === 'deflection' && (

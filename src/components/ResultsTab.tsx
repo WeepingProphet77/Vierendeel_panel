@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { FrameModel, AnalysisResults, MaterialProperties } from '../types';
+import type { FrameModel, AnalysisResults, MaterialProperties, SavedPrestressDesign } from '../types';
 import MemberDiagrams from './MemberDiagrams';
 import PrestressDesignModal from './PrestressDesignModal';
 
@@ -9,9 +9,12 @@ interface Props {
   material: MaterialProperties;
   selectedMemberId: number | null;
   onSelectMember: (id: number | null) => void;
+  prestressDesigns: Record<number, SavedPrestressDesign>;
+  onSavePrestressDesign: (design: SavedPrestressDesign) => void;
+  onClearPrestressDesign: (memberId: number) => void;
 }
 
-export default function ResultsTab({ frameModel, results, material, selectedMemberId, onSelectMember }: Props) {
+export default function ResultsTab({ frameModel, results, material, selectedMemberId, onSelectMember, prestressDesigns, onSavePrestressDesign, onClearPrestressDesign }: Props) {
   const [prestressModalOpen, setPrestressModalOpen] = useState(false);
 
   if (!results) {
@@ -50,6 +53,9 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
               <th>Gov ft (psi)</th>
               <th>Gov fc (psi)</th>
               <th>Status</th>
+              <th>Mu (ft-k)</th>
+              <th>{'\u03C6'}Mn (ft-k)</th>
+              <th>Util.</th>
             </tr>
           </thead>
           <tbody>
@@ -57,6 +63,8 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
               const forces = results.memberForces.find(f => f.memberId === m.id);
               const stresses = results.memberStresses.find(s => s.memberId === m.id);
               if (!forces || !stresses) return null;
+
+              const pd = prestressDesigns[m.id];
 
               const isSelected = m.id === selectedMemberId;
               let rowClass = '';
@@ -97,6 +105,21 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
                   }`}>
                     {stresses.status}
                   </td>
+                  {pd ? (
+                    <>
+                      <td>{pd.Mu.toFixed(2)}</td>
+                      <td style={{ color: 'var(--accent)' }}>{pd.phiMnFt.toFixed(2)}</td>
+                      <td className={`font-semibold ${pd.utilization <= 1.0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {(pd.utilization * 100).toFixed(0)}%
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td style={{ color: 'var(--text-hint)' }}>—</td>
+                      <td style={{ color: 'var(--text-hint)' }}>—</td>
+                      <td style={{ color: 'var(--text-hint)' }}>—</td>
+                    </>
+                  )}
                 </tr>
               );
             })}
@@ -123,6 +146,9 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
           forces={selectedForces}
           stresses={selectedStresses}
           material={material}
+          savedDesign={prestressDesigns[selectedMember.id]}
+          onSave={onSavePrestressDesign}
+          onClear={onClearPrestressDesign}
           onClose={() => setPrestressModalOpen(false)}
         />
       )}
