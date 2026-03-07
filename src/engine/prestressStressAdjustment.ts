@@ -1,63 +1,129 @@
 /**
  * Post-processing utility to adjust frame analysis stresses
  * based on prestress precompression.
+ *
+ * Produces full MemberStresses objects so every consumer (tables, diagrams,
+ * summary) automatically sees the adjusted values.
  */
 
-import type { MemberStresses, MemberPrestressDesign } from '../types';
+import type {
+  MemberStresses,
+  FaceStress,
+  AnalysisResults,
+  SavedPrestressDesign,
+} from '../types';
 
-export interface AdjustedMemberStresses {
-  memberId: number;
-  frameStresses: MemberStresses;
-  prestressPrecompression: number; // psi, positive = compression
-  adjustedTensilePsi: number;
-  adjustedCompressivePsi: number;
-  adjustedStatus: 'OK' | 'Cracked' | 'High Compression';
-}
+/**
+ * Compute the precompressive stress (psi) at the extreme tension fiber
+ * from a saved prestress design. Returns 0 if no design or no prestress force.
+ *
+ * Also returns the uniform axial precompression P/A (psi) which adds to
+ * compressive stress everywhere.
+ */
+export function prestressPrecompression(design: SavedPrestressDesign): {
+  tensionFiberPsi: number;  // P/A + P·e·yb/Ig  (reduces tension)
+  axialPsi: number;         // P/A               (adds to compression)
+} {
+  const { result } = design;
+  if (!result?.cracking) return { tensionFiberPsi: 0, axialPsi: 0 };
 
-export function computeAdjustedStresses(
-  memberStresses: MemberStresses,
-  prestressDesign: MemberPrestressDesign | undefined,
-  fr: number,       // modulus of rupture, psi
-  fc_limit: number  // 0.60·f'c, psi
-): AdjustedMemberStresses {
-  if (!prestressDesign?.result?.cracking) {
-    return {
-      memberId: memberStresses.memberId,
-      frameStresses: memberStresses,
-      prestressPrecompression: 0,
-      adjustedTensilePsi: memberStresses.governingTensilePsi,
-      adjustedCompressivePsi: memberStresses.governingCompressivePsi,
-      adjustedStatus: memberStresses.status,
-    };
-  }
-
-  const { P, e, sectionProps } = prestressDesign.result.cracking;
+  const { P, e, sectionProps } = result.cracking;
   const { A, Ig, yb } = sectionProps;
 
-  // Precompressive stress at extreme tension fiber (psi)
-  // P is in kips, convert to lbs; A in in², Ig in in⁴, e and yb in in
-  const fpc = (P * 1000 / A) + (P * 1000 * e * yb / Ig);
-  const precompPsi = Math.max(0, fpc);
+  if (P <= 0 || A <= 0) return { tensionFiberPsi: 0, axialPsi: 0 };
 
-  // Adjusted tensile stress: subtract precompression from frame tensile stress
-  const adjustedTensile = Math.max(0, memberStresses.governingTensilePsi - precompPsi);
+  const axialPsi = (P * 1000) / A;
+  const tensionFiberPsi = Math.max(0, axialPsi + (P * 1000 * e * yb) / Ig);
 
-  // Adjusted compressive stress: prestress adds compression
-  const adjustedCompressive = memberStresses.governingCompressivePsi + (P * 1000 / A);
+  return { tensionFiberPsi, axialPsi };
+}
 
-  // Re-evaluate status
-  let adjustedStatus: 'OK' | 'Cracked' | 'High Compression' = 'OK';
-  if (adjustedTensile > fr) adjustedStatus = 'Cracked';
-  if (adjustedCompressive > fc_limit) {
-    adjustedStatus = 'High Compression';
-  }
+/** Adjust a single FaceStress for prestress precompression */
+function adjustFace(
+  face: FaceStress,
+  tensionReliefPsi: number,
+  compressionAddPsi: number,
+): FaceStress {
+  return {
+    axialPsi: face.axialPsi,
+    bendingPsi: face.bendingPsi,
+    maxTensilePsi: Math.max(0, face.maxTensilePsi - tensionReliefPsi),
+    maxCompressivePsi: face.maxCompressivePsi + compressionAddPsi,
+  };
+}
+
+/** Determine status from adjusted governing stresses */
+function computeStatus(
+  tensilePsi: number,
+  compressivePsi: number,
+  fr: number,
+  fcLimit: number,
+): 'OK' | 'Cracked' | 'High Compression' {
+  if (compressivePsi > fcLimit) return 'High Compression';
+  if (tensilePsi > fr) return 'Cracked';
+  return 'OK';
+}
+
+/**
+ * Produce a fully adjusted MemberStresses from the raw frame stresses
+ * and a saved prestress design. If no design exists for a member, the
+ * original stresses are returned unchanged.
+ */
+export function adjustMemberStresses(
+  raw: MemberStresses,
+  design: SavedPrestressDesign | undefined,
+  fr: number,
+  fcLimit: number,
+): MemberStresses {
+  if (!design) return raw;
+
+  const { tensionFiberPsi, axialPsi } = prestressPrecompression(design);
+  if (tensionFiberPsi === 0 && axialPsi === 0) return raw;
+
+  const startFace = adjustFace(raw.startFace, tensionFiberPsi, axialPsi);
+  const endFace = adjustFace(raw.endFace, tensionFiberPsi, axialPsi);
+  const maxSpan = adjustFace(raw.maxSpan, tensionFiberPsi, axialPsi);
+
+  const governingTensilePsi = Math.max(
+    startFace.maxTensilePsi,
+    endFace.maxTensilePsi,
+    maxSpan.maxTensilePsi,
+  );
+  const governingCompressivePsi = Math.max(
+    startFace.maxCompressivePsi,
+    endFace.maxCompressivePsi,
+    maxSpan.maxCompressivePsi,
+  );
 
   return {
-    memberId: memberStresses.memberId,
-    frameStresses: memberStresses,
-    prestressPrecompression: precompPsi,
-    adjustedTensilePsi: adjustedTensile,
-    adjustedCompressivePsi: adjustedCompressive,
-    adjustedStatus,
+    ...raw,
+    startFace,
+    endFace,
+    maxSpan,
+    governingTensilePsi,
+    governingCompressivePsi,
+    status: computeStatus(governingTensilePsi, governingCompressivePsi, fr, fcLimit),
+  };
+}
+
+/**
+ * Produce a full AnalysisResults with all member stresses adjusted for
+ * any saved prestress designs. Everything else (forces, reactions, etc.)
+ * is passed through unchanged.
+ */
+export function applyPrestressToResults(
+  results: AnalysisResults,
+  designs: Record<number, SavedPrestressDesign>,
+  fr: number,
+  fcLimit: number,
+): AnalysisResults {
+  // Short-circuit if no designs
+  if (Object.keys(designs).length === 0) return results;
+
+  return {
+    ...results,
+    memberStresses: results.memberStresses.map(s =>
+      adjustMemberStresses(s, designs[s.memberId], fr, fcLimit)
+    ),
   };
 }

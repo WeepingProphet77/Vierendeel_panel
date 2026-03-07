@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import type { Member, MemberForces, MemberStresses, MaterialProperties } from '../types';
+import type { Member, MemberForces, MemberStresses, MaterialProperties, SavedPrestressDesign } from '../types';
+import { prestressPrecompression } from '../engine/prestressStressAdjustment';
 
 interface Props {
   member: Member;
@@ -7,6 +8,7 @@ interface Props {
   stresses: MemberStresses;
   material: MaterialProperties;
   onOpenPrestressDesign?: () => void;
+  prestressDesign?: SavedPrestressDesign;
 }
 
 interface DiagramPoint {
@@ -382,7 +384,7 @@ function DiagramSvg({
   );
 }
 
-export default function MemberDiagrams({ member, forces, stresses, material, onOpenPrestressDesign }: Props) {
+export default function MemberDiagrams({ member, forces, stresses, material, onOpenPrestressDesign, prestressDesign }: Props) {
   const diagWidth = 600;
   const diagHeight = 160;
 
@@ -391,10 +393,29 @@ export default function MemberDiagrams({ member, forces, stresses, material, onO
     [member, forces]
   );
 
-  const { tensionFiber, compressionFiber } = useMemo(
-    () => computeStressDiagram(member, forces, moment),
-    [member, forces, moment]
-  );
+  // Compute prestress offset for stress diagram
+  const precomp = useMemo(() => {
+    if (!prestressDesign) return { tensionFiberPsi: 0, axialPsi: 0 };
+    return prestressPrecompression(prestressDesign);
+  }, [prestressDesign]);
+
+  const { tensionFiber, compressionFiber } = useMemo(() => {
+    const raw = computeStressDiagram(member, forces, moment);
+    if (precomp.tensionFiberPsi === 0 && precomp.axialPsi === 0) return raw;
+    // Prestress shifts stresses: reduces tension, adds compression
+    // Convention: positive = tension, negative = compression
+    // Precompression reduces all values (shifts toward compression)
+    return {
+      tensionFiber: raw.tensionFiber.map(p => ({
+        ...p,
+        value: p.value - precomp.tensionFiberPsi,
+      })),
+      compressionFiber: raw.compressionFiber.map(p => ({
+        ...p,
+        value: p.value - precomp.axialPsi,
+      })),
+    };
+  }, [member, forces, moment, precomp]);
 
   const fr = 7.5 * Math.sqrt(material.fcPsi);
   const fc_limit = 0.60 * material.fcPsi;
@@ -463,7 +484,7 @@ export default function MemberDiagrams({ member, forces, stresses, material, onO
       />
 
       <DiagramSvg
-        title="Combined Stress (P/A ± Mc/I)"
+        title={prestressDesign ? "Combined Stress (P/A ± Mc/I − Prestress)" : "Combined Stress (P/A ± Mc/I)"}
         points={tensionFiber}
         points2={compressionFiber}
         label1="Tension fiber"
