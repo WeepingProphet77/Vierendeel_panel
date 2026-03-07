@@ -1,13 +1,14 @@
 import { useCallback, useMemo } from 'react';
-import type { FrameModel, AnalysisResults, AppInputs } from '../types';
+import type { FrameModel, AnalysisResults, AppInputs, SavedPrestressDesign } from '../types';
 
 interface Props {
   frameModel: FrameModel;
   results: AnalysisResults | null;
   inputs: AppInputs;
+  prestressDesigns?: Record<number, SavedPrestressDesign>;
 }
 
-export default function SummaryTab({ frameModel, results, inputs }: Props) {
+export default function SummaryTab({ frameModel, results, inputs, prestressDesigns = {} }: Props) {
   const fr = 7.5 * Math.sqrt(inputs.material.fcPsi);
   const fc_limit = 0.60 * inputs.material.fcPsi;
 
@@ -62,10 +63,11 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
     rows.push(['Max Deflection', `${results.maxDeflection.valueIn.toFixed(4)} in`, `Node ${results.maxDeflection.nodeId}`]);
     rows.push([]);
     rows.push(['Member Results']);
-    rows.push(['ID', 'Label', 'Type', 'b(in)', 'FlexL(ft)', 'd(in)', 'P(kips)', 'V1(kips)', 'M1(ft-k)', 'V2(kips)', 'M2(ft-k)', 'Mmax(ft-k)', 'Gov ft(psi)', 'Gov fc(psi)', 'Status']);
+    rows.push(['ID', 'Label', 'Type', 'b(in)', 'FlexL(ft)', 'd(in)', 'P(kips)', 'V1(kips)', 'M1(ft-k)', 'V2(kips)', 'M2(ft-k)', 'Mmax(ft-k)', 'Gov ft(psi)', 'Gov fc(psi)', 'Status', 'Prestress', 'Mu(ft-k)', 'phiMn(ft-k)', 'Util']);
     for (const s of sortedMembers) {
       const m = frameModel.members.find(mm => mm.id === s.memberId)!;
       const f = results.memberForces.find(ff => ff.memberId === s.memberId)!;
+      const pd = prestressDesigns[s.memberId];
       rows.push([
         m.id.toString(), m.label, m.orientation, m.thicknessIn.toFixed(1),
         m.flexibleLengthFt.toFixed(2), m.depthIn.toFixed(1),
@@ -74,6 +76,10 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
         f.maxMomentFtKips.toFixed(2),
         s.governingTensilePsi.toFixed(0), s.governingCompressivePsi.toFixed(0),
         s.status,
+        pd ? 'Yes' : '',
+        pd ? pd.Mu.toFixed(2) : '',
+        pd ? pd.phiMnFt.toFixed(2) : '',
+        pd ? (pd.utilization * 100).toFixed(0) + '%' : '',
       ]);
     }
 
@@ -85,7 +91,7 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
     a.download = 'vierendeel_analysis_summary.csv';
     a.click();
     URL.revokeObjectURL(url);
-  }, [results, frameModel, inputs, sortedMembers]);
+  }, [results, frameModel, inputs, sortedMembers, prestressDesigns]);
 
   if (!results) {
     return <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>No analysis results available.</div>;
@@ -162,11 +168,13 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
               <th>Max ft/fr</th>
               <th>Max fc/0.6f'c</th>
               <th>Status</th>
+              <th>Prestress</th>
             </tr>
           </thead>
           <tbody>
             {sortedMembers.map(s => {
               const m = frameModel.members.find(mm => mm.id === s.memberId)!;
+              const pd = prestressDesigns[s.memberId];
               const govTRatio = s.governingTensilePsi / fr;
               const govCRatio = s.governingCompressivePsi / fc_limit;
 
@@ -189,6 +197,15 @@ export default function SummaryTab({ frameModel, results, inputs }: Props) {
                     s.status === 'Cracked' ? 'text-yellow-400' : 'text-red-400'
                   }`}>
                     {s.status}
+                  </td>
+                  <td>
+                    {pd ? (
+                      <span className={`text-xs font-semibold ${pd.utilization <= 1.0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {(pd.utilization * 100).toFixed(0)}% util
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-hint)' }}>—</span>
+                    )}
                   </td>
                 </tr>
               );

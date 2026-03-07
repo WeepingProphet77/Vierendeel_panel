@@ -9,6 +9,7 @@ import ModelTab from './components/ModelTab';
 import ResultsTab from './components/ResultsTab';
 import DeflectionTab from './components/DeflectionTab';
 import SummaryTab from './components/SummaryTab';
+import { applyPrestressToResults } from './engine/prestressStressAdjustment';
 
 function getDefaultOpenings(numOpenings: number, panelWidth: number, panelHeight: number): Opening[] {
   const openings: Opening[] = [];
@@ -91,6 +92,14 @@ export default function App() {
     if ('error' in result) return null;
     return result;
   }, [frameModel, inputs.openings, inputs.panel, inputs.material, inputs.loading]);
+
+  // Produce effective results with prestress-adjusted stresses
+  const effectiveResults = useMemo(() => {
+    if (!analysisResult) return null;
+    const fr = 7.5 * Math.sqrt(inputs.material.fcPsi);
+    const fcLimit = 0.60 * inputs.material.fcPsi;
+    return applyPrestressToResults(analysisResult, prestressDesigns, fr, fcLimit);
+  }, [analysisResult, prestressDesigns, inputs.material.fcPsi]);
 
   // Run validation test on mount
   useEffect(() => {
@@ -261,7 +270,7 @@ export default function App() {
           {activeTab === 'results' && (
             <ResultsTab
               frameModel={frameModel}
-              results={analysisResult}
+              results={effectiveResults}
               material={inputs.material}
               selectedMemberId={selectedMemberId}
               onSelectMember={setSelectedMemberId}
@@ -273,15 +282,16 @@ export default function App() {
           {activeTab === 'deflection' && (
             <DeflectionTab
               frameModel={frameModel}
-              results={analysisResult}
+              results={effectiveResults}
               inputs={inputs}
             />
           )}
           {activeTab === 'summary' && (
             <SummaryTab
               frameModel={frameModel}
-              results={analysisResult}
+              results={effectiveResults}
               inputs={inputs}
+              prestressDesigns={prestressDesigns}
             />
           )}
         </div>

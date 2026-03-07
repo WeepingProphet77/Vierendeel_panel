@@ -136,6 +136,7 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
             stresses={selectedStresses}
             material={material}
             onOpenPrestressDesign={() => setPrestressModalOpen(true)}
+            prestressDesign={prestressDesigns[selectedMember.id]}
           />
         </div>
       )}
