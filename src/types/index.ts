@@ -205,3 +205,14 @@ export interface MemberPrestressDesign {
   layers: SteelLayer[];
   result: PrestressDesignResult | null;
 }
+
+/** Persisted prestress design with computed summary fields for table display */
+export interface SavedPrestressDesign {
+  memberId: number;
+  section: PrestressSectionInput;
+  layers: SteelLayer[];
+  result: PrestressDesignResult;
+  Mu: number;          // kip-ft (factored moment demand)
+  phiMnFt: number;     // kip-ft (design capacity)
+  utilization: number;  // Mu / φMn
+}

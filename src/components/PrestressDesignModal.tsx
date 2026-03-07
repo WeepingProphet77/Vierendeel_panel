@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import type { Member, MemberForces, MemberStresses, MaterialProperties, PrestressSectionInput, SteelLayer, SteelPreset } from '../types';
+import type { Member, MemberForces, MemberStresses, MaterialProperties, PrestressSectionInput, SteelLayer, SteelPreset, SavedPrestressDesign } from '../types';
 import { analyzeBeam } from '../engine/prestressAnalysis';
 import steelPresets from '../data/steelPresets';
 import PrestressDesignResults from './PrestressDesignResults';
@@ -14,6 +14,9 @@ interface Props {
   forces: MemberForces;
   stresses: MemberStresses;
   material: MaterialProperties;
+  savedDesign?: SavedPrestressDesign;
+  onSave: (design: SavedPrestressDesign) => void;
+  onClear: (memberId: number) => void;
   onClose: () => void;
 }
 
@@ -41,9 +44,12 @@ function makeLayer(preset: SteelPreset): SteelLayer {
   };
 }
 
-export default function PrestressDesignModal({ member, forces, stresses, material, onClose }: Props) {
-  const [section, setSection] = useState<PrestressSectionInput>(() => defaultSection(member, material));
+export default function PrestressDesignModal({ member, forces, stresses, material, savedDesign, onSave, onClear, onClose }: Props) {
+  const [section, setSection] = useState<PrestressSectionInput>(() =>
+    savedDesign ? savedDesign.section : defaultSection(member, material)
+  );
   const [layers, setLayers] = useState<SteelLayer[]>(() => {
+    if (savedDesign) return savedDesign.layers;
     const preset = steelPresets.find(p => p.id === 'grade60')!;
     const layer = makeLayer(preset);
     layer.depth = member.depthIn - 2.5; // typical cover
@@ -103,9 +109,38 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
               Member {member.id}: {member.label} | Mu = {Mu.toFixed(2)} kip-ft | Gov. Tension = {stresses.governingTensilePsi.toFixed(0)} psi
             </div>
           </div>
-          <button onClick={onClose} className="text-lg px-2 hover:opacity-70" style={{ color: 'var(--text-secondary)' }}>
-            ✕
-          </button>
+          <div className="flex items-center gap-2">
+            {result && (
+              <button
+                onClick={() => {
+                  onSave({
+                    memberId: member.id,
+                    section,
+                    layers,
+                    result,
+                    Mu,
+                    phiMnFt: result.phiMnFt,
+                    utilization: Mu > 0 ? Mu / result.phiMnFt : 0,
+                  });
+                  onClose();
+                }}
+                className="text-xs px-3 py-1.5 rounded font-semibold"
+                style={{ background: '#22c55e', color: 'white' }}>
+                Save & Close
+              </button>
+            )}
+            {savedDesign && (
+              <button
+                onClick={() => { onClear(member.id); onClose(); }}
+                className="text-xs px-3 py-1.5 rounded font-semibold"
+                style={{ color: '#ef4444', border: '1px solid #ef4444' }}>
+                Clear Design
+              </button>
+            )}
+            <button onClick={onClose} className="text-lg px-2 hover:opacity-70" style={{ color: 'var(--text-secondary)' }}>
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="p-4 space-y-4">
