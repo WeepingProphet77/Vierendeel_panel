@@ -17,6 +17,8 @@ interface Props {
   stresses: MemberStresses;
   material: MaterialProperties;
   savedDesign?: SavedPrestressDesign;
+  allDesigns: Record<number, SavedPrestressDesign>;
+  allMembers: Member[];
   onSave: (design: SavedPrestressDesign) => void;
   onClear: (memberId: number) => void;
   onClose: () => void;
@@ -46,7 +48,7 @@ function makeLayer(preset: SteelPreset): SteelLayer {
   };
 }
 
-export default function PrestressDesignModal({ member, forces, stresses, material, savedDesign, onSave, onClear, onClose }: Props) {
+export default function PrestressDesignModal({ member, forces, stresses, material, savedDesign, allDesigns, allMembers, onSave, onClear, onClose }: Props) {
   const [section, setSection] = useState<PrestressSectionInput>(() =>
     savedDesign ? savedDesign.section : defaultSection(member, material)
   );
@@ -146,6 +148,39 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
         </div>
 
         <div className="p-4 space-y-4">
+          {/* Copy from another member */}
+          {(() => {
+            const otherDesigns = Object.values(allDesigns).filter(d => d.memberId !== member.id);
+            if (otherDesigns.length === 0) return null;
+            return (
+              <div className="flex items-center gap-2">
+                <label className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Copy design from:</label>
+                <select
+                  defaultValue=""
+                  onChange={e => {
+                    const srcId = parseInt(e.target.value);
+                    const src = allDesigns[srcId];
+                    if (!src) return;
+                    setSection({ ...src.section });
+                    setLayers(src.layers.map(l => ({ ...l, id: nextLayerId++ })));
+                    e.target.value = '';
+                  }}
+                  className="text-xs p-1.5 rounded"
+                  style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                  <option value="" disabled>Select member…</option>
+                  {otherDesigns.map(d => {
+                    const m = allMembers.find(m => m.id === d.memberId);
+                    return (
+                      <option key={d.memberId} value={d.memberId}>
+                        Member {d.memberId}: {m?.label ?? ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            );
+          })()}
+
           {/* Section Geometry */}
           <div>
             <div className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Section Geometry</div>
