@@ -14,6 +14,11 @@ import type {
   LayerResult,
   CrackingResult,
 } from '../types';
+import {
+  polygonSectionProperties,
+  polygonCompressionForce,
+  polygonCompressionCentroid,
+} from './polygonSection';
 
 // ─── ACI 318 helpers ────────────────────────────────────────────────────────
 
@@ -95,54 +100,12 @@ export function concreteCompression(
   fc: number, a: number, bf: number, bw: number, hf: number,
   section: PrestressSectionInput | null = null
 ): number {
-  // Handle double tee section
-  if (section && section.sectionType === 'doubletee') {
-    const numStems = section.numStems ?? 2;
-    const stemWidth = section.stemWidth ?? bw;
-    if (a <= hf) {
-      return 0.85 * fc * a * bf;
-    }
-    return 0.85 * fc * (hf * bf + (a - hf) * numStems * stemWidth);
+  // Handle custom polygon section
+  if (section && section.sectionType === 'custom' && section.polygon && section.polygon.length >= 3) {
+    return polygonCompressionForce(section.polygon, fc, a);
   }
 
-  // Handle hollow core section
-  if (section && section.sectionType === 'hollowcore') {
-    const numVoids = section.numVoids ?? 0;
-    const voidDiameter = section.voidDiameter ?? 0;
-    const voidCenterDepth = section.voidCenterDepth ?? 0;
-    const grossArea = bf * a;
-
-    // Calculate void area within stress block depth a
-    let voidArea = 0;
-    if (a > voidCenterDepth - voidDiameter / 2 && voidCenterDepth > 0) {
-      // Voids intersect with stress block
-      for (let i = 0; i < numVoids; i++) {
-        const voidTop = voidCenterDepth - voidDiameter / 2;
-        const voidBottom = voidCenterDepth + voidDiameter / 2;
-
-        if (a <= voidTop) {
-          // Stress block doesn't reach void
-          continue;
-        } else if (a >= voidBottom) {
-          // Full void circle is within stress block
-          voidArea += Math.PI * Math.pow(voidDiameter / 2, 2);
-        } else {
-          // Partial void intersection (circular segment)
-          const r = voidDiameter / 2;
-          const h = a - voidTop;
-          // Use circular segment area formula
-          const theta = 2 * Math.acos((r - h) / r);
-          const segmentArea = (r * r / 2) * (theta - Math.sin(theta));
-          voidArea += segmentArea;
-        }
-      }
-    }
-
-    const netArea = grossArea - voidArea;
-    return 0.85 * fc * netArea;
-  }
-
-  // Handle T-beam and rectangular sections
+  // Handle rectangular section (and fallback)
   if (a <= hf) {
     return 0.85 * fc * a * bf;
   }
@@ -156,64 +119,12 @@ export function compressionCentroid(
   a: number, bf: number, bw: number, hf: number,
   section: PrestressSectionInput | null = null
 ): number {
-  // Handle double tee section
-  if (section && section.sectionType === 'doubletee') {
-    const numStems = section.numStems ?? 2;
-    const stemWidth = section.stemWidth ?? bw;
-    if (a <= hf) {
-      return a / 2;
-    }
-    const flangeArea = hf * bf;
-    const stemArea = (a - hf) * numStems * stemWidth;
-    const totalArea = flangeArea + stemArea;
-    return (flangeArea * hf / 2 + stemArea * (hf + (a - hf) / 2)) / totalArea;
+  // Handle custom polygon section
+  if (section && section.sectionType === 'custom' && section.polygon && section.polygon.length >= 3) {
+    return polygonCompressionCentroid(section.polygon, a);
   }
 
-  // Handle hollow core section
-  if (section && section.sectionType === 'hollowcore') {
-    const numVoids = section.numVoids ?? 0;
-    const voidDiameter = section.voidDiameter ?? 0;
-    const voidCenterDepth = section.voidCenterDepth ?? 0;
-    const grossArea = bf * a;
-    const grossCentroid = a / 2;
-
-    // Calculate void contribution
-    let voidMoment = 0;
-    let voidArea = 0;
-
-    if (a > voidCenterDepth - voidDiameter / 2 && voidCenterDepth > 0) {
-      for (let i = 0; i < numVoids; i++) {
-        const voidTop = voidCenterDepth - voidDiameter / 2;
-        const voidBottom = voidCenterDepth + voidDiameter / 2;
-
-        if (a <= voidTop) {
-          continue;
-        } else if (a >= voidBottom) {
-          // Full void circle
-          const area = Math.PI * Math.pow(voidDiameter / 2, 2);
-          voidArea += area;
-          voidMoment += area * voidCenterDepth;
-        } else {
-          // Partial void intersection
-          const r = voidDiameter / 2;
-          const h = a - voidTop;
-          const theta = 2 * Math.acos((r - h) / r);
-          const segmentArea = (r * r / 2) * (theta - Math.sin(theta));
-          // Centroid of circular segment from chord
-          const yBar = (4 * r * Math.pow(Math.sin(theta / 2), 3)) / (3 * (theta - Math.sin(theta)));
-          const segmentCentroid = voidTop + yBar;
-          voidArea += segmentArea;
-          voidMoment += segmentArea * segmentCentroid;
-        }
-      }
-    }
-
-    const netArea = grossArea - voidArea;
-    if (netArea <= 0) return grossCentroid;
-    return (grossArea * grossCentroid - voidMoment) / netArea;
-  }
-
-  // Handle T-beam and rectangular sections
+  // Handle rectangular section (and fallback)
   if (a <= hf) {
     return a / 2;
   }
@@ -359,7 +270,17 @@ export function grossSectionProperties(section: PrestressSectionInput): {
   let Ig: number;
 
   switch (section.sectionType) {
-    case 'rectangular': {
+    case 'custom': {
+      if (section.polygon && section.polygon.length >= 3) {
+        const props = polygonSectionProperties(section.polygon);
+        if (props) {
+          A = props.A;
+          yCg = props.yCg;
+          Ig = props.Ig;
+          break;
+        }
+      }
+      // Fallback to rectangular
       const b = section.bw;
       A = b * h;
       yCg = h / 2;
@@ -367,56 +288,8 @@ export function grossSectionProperties(section: PrestressSectionInput): {
       break;
     }
 
-    case 'tbeam': {
-      const { bf, bw, hf } = section;
-      const hw = h - hf;
-      const flangeA = bf * hf;
-      const webA = bw * hw;
-      A = flangeA + webA;
-      yCg = (flangeA * hf / 2 + webA * (hf + hw / 2)) / A;
-      const flangeI = (bf * Math.pow(hf, 3)) / 12 + flangeA * Math.pow(yCg - hf / 2, 2);
-      const webI = (bw * Math.pow(hw, 3)) / 12 + webA * Math.pow(hf + hw / 2 - yCg, 2);
-      Ig = flangeI + webI;
-      break;
-    }
-
-    case 'doubletee': {
-      const { bf, hf } = section;
-      const numStems = section.numStems ?? 2;
-      const stemWidth = section.stemWidth ?? section.bw;
-      const hs = h - hf;
-      const flangeA = bf * hf;
-      const stemA = numStems * stemWidth * hs;
-      A = flangeA + stemA;
-      yCg = (flangeA * hf / 2 + stemA * (hf + hs / 2)) / A;
-      const flangeI = (bf * Math.pow(hf, 3)) / 12 + flangeA * Math.pow(yCg - hf / 2, 2);
-      const stemI = (numStems * stemWidth * Math.pow(hs, 3)) / 12 + stemA * Math.pow(hf + hs / 2 - yCg, 2);
-      Ig = flangeI + stemI;
-      break;
-    }
-
-    case 'hollowcore': {
-      const { bf } = section;
-      const numVoids = section.numVoids ?? 0;
-      const voidDiameter = section.voidDiameter ?? 0;
-      const voidCenterDepth = section.voidCenterDepth ?? h / 2;
-      const r = voidDiameter / 2;
-      const voidA = numVoids * Math.PI * r * r;
-      A = bf * h - voidA;
-      // Gross rectangle centroid is h/2; void centroids are at voidCenterDepth
-      const grossMoment = bf * h * (h / 2);
-      const voidMoment = voidA * voidCenterDepth;
-      yCg = (grossMoment - voidMoment) / A;
-      // Moment of inertia: gross rectangle minus voids (parallel axis theorem)
-      const grossI = (bf * Math.pow(h, 3)) / 12 + bf * h * Math.pow(h / 2 - yCg, 2);
-      const voidIself = numVoids * (Math.PI * Math.pow(r, 4)) / 4;
-      const voidIpar = voidA * Math.pow(voidCenterDepth - yCg, 2);
-      Ig = grossI - voidIself - voidIpar;
-      break;
-    }
-
+    case 'rectangular':
     default: {
-      // Fallback to rectangular using bf × h
       const b = section.bf || section.bw;
       A = b * h;
       yCg = h / 2;

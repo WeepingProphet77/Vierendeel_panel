@@ -18,7 +18,7 @@ export default function PrestressSectionDiagram({ section, result }: Props) {
   const strainW = 120;
   const gap = 40;
 
-  const { h, bw, bf, hf, sectionType } = section;
+  const { h, bw, bf, sectionType } = section;
   if (h <= 0 || bw <= 0) return null;
 
   // Scale to fit
@@ -33,69 +33,29 @@ export default function PrestressSectionDiagram({ section, result }: Props) {
 
   // Build section outline path
   function sectionOutline(): string {
-    const w = (sectionType === 'tbeam' || sectionType === 'doubletee' ? bf : bw) * scale;
+    // Custom polygon
+    if (sectionType === 'custom' && section.polygon && section.polygon.length >= 3) {
+      const poly = section.polygon;
+      // Find extents to center the polygon in the diagram
+      let minX = Infinity, maxX = -Infinity;
+      for (const v of poly) {
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+      }
+      const polyW = maxX - minX;
+      const offsetX = sectionCenterX - (polyW * scale) / 2 - minX * scale;
+
+      return poly.map((v, i) => {
+        const sx = offsetX + v.x * scale;
+        const sy = topY + v.y * scale;
+        return (i === 0 ? 'M ' : 'L ') + `${sx},${sy}`;
+      }).join(' ') + ' Z';
+    }
+
+    // Rectangular (default)
     const webW = bw * scale;
-    const flangeH = hf * scale;
-
-    if (sectionType === 'rectangular') {
-      const left = sectionCenterX - webW / 2;
-      return `M ${left},${topY} h ${webW} v ${h * scale} h ${-webW} Z`;
-    }
-
-    if (sectionType === 'tbeam') {
-      const flangeLeft = sectionCenterX - w / 2;
-      return `M ${flangeLeft},${topY} h ${w} v ${flangeH}
-        h ${-(w - webW) / 2} v ${(h - hf) * scale}
-        h ${-webW} v ${-(h - hf) * scale}
-        h ${-(w - webW) / 2} Z`;
-    }
-
-    if (sectionType === 'doubletee') {
-      const numStems = section.numStems ?? 2;
-      const stemW = (section.stemWidth ?? bw) * scale;
-      const flangeLeft = sectionCenterX - w / 2;
-      let path = `M ${flangeLeft},${topY} h ${w} v ${flangeH}`;
-      // Build stems from right to left
-      const stemSpacing = w / (numStems + 1);
-      const stems: number[] = [];
-      for (let i = 1; i <= numStems; i++) {
-        stems.push(flangeLeft + i * stemSpacing);
-      }
-      // Right side down to bottom of flange
-      const flangeBot = topY + flangeH;
-      // Go along bottom of flange to rightmost stem
-      for (let i = stems.length - 1; i >= 0; i--) {
-        const stemRight = stems[i] + stemW / 2;
-        path += ` L ${stemRight},${flangeBot} v ${(h - hf) * scale}`;
-        path += ` h ${-stemW} v ${-(h - hf) * scale}`;
-      }
-      path += ` L ${flangeLeft},${flangeBot} Z`;
-      return path;
-    }
-
-    // hollowcore: draw as rectangle (voids rendered separately)
-    const left = sectionCenterX - w / 2;
-    return `M ${left},${topY} h ${w} v ${h * scale} h ${-w} Z`;
-  }
-
-  // Draw void circles for hollowcore
-  function renderVoids() {
-    if (sectionType !== 'hollowcore') return null;
-    const numVoids = section.numVoids ?? 0;
-    const voidDiam = section.voidDiameter ?? 0;
-    const voidCenter = section.voidCenterDepth ?? h / 2;
-    const w = bf * scale;
-    const left = sectionCenterX - w / 2;
-    const voids = [];
-    for (let i = 0; i < numVoids; i++) {
-      const cx = left + (i + 1) * w / (numVoids + 1);
-      const cy = yPos(voidCenter);
-      voids.push(
-        <circle key={i} cx={cx} cy={cy} r={voidDiam / 2 * scale}
-          fill="var(--bg-panel)" stroke="var(--text-tertiary)" strokeWidth={1} />
-      );
-    }
-    return voids;
+    const left = sectionCenterX - webW / 2;
+    return `M ${left},${topY} h ${webW} v ${h * scale} h ${-webW} Z`;
   }
 
   // Stress block
@@ -103,7 +63,7 @@ export default function PrestressSectionDiagram({ section, result }: Props) {
     if (!result) return null;
     const a = result.a;
     if (a <= 0) return null;
-    const w = (sectionType === 'tbeam' || sectionType === 'doubletee' ? bf : bw) * scale;
+    const w = bw * scale;
     const blockH = Math.min(a, h) * scale;
     const left = sectionCenterX - w / 2;
 
@@ -118,7 +78,7 @@ export default function PrestressSectionDiagram({ section, result }: Props) {
   function renderNeutralAxis() {
     if (!result) return null;
     const naY = yPos(result.c);
-    const w = (sectionType === 'tbeam' || sectionType === 'doubletee' ? bf : bw) * scale;
+    const w = bw * scale;
     return (
       <line x1={sectionCenterX - w / 2 - 10} y1={naY} x2={sectionCenterX + w / 2 + 10} y2={naY}
         stroke="#eab308" strokeWidth={1.5} strokeDasharray="6,3" />
@@ -194,7 +154,6 @@ export default function PrestressSectionDiagram({ section, result }: Props) {
         fontSize="10" fill="var(--text-secondary)" fontWeight="600">Cross Section</text>
       {/* Section outline */}
       <path d={sectionOutline()} fill="var(--bg-input)" stroke="var(--text-secondary)" strokeWidth={1.5} />
-      {renderVoids()}
       {renderStressBlock()}
       {renderNeutralAxis()}
       {renderSteelDots()}
