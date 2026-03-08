@@ -10,6 +10,7 @@ import ResultsTab from './components/ResultsTab';
 import DeflectionTab from './components/DeflectionTab';
 import SummaryTab from './components/SummaryTab';
 import { applyPrestressToResults } from './engine/prestressStressAdjustment';
+import { serializeProject, deserializeProject, saveFile, loadFile } from './fileIO';
 
 function getDefaultOpenings(numOpenings: number, panelWidth: number, panelHeight: number): Opening[] {
   const openings: Opening[] = [];
@@ -67,6 +68,36 @@ export default function App() {
     });
   }, []);
 
+  const handleSave = useCallback(async () => {
+    const json = serializeProject(inputs, prestressDesigns, previousMembers ?? undefined);
+    await saveFile(json, 'vierendeel-project');
+  }, [inputs, prestressDesigns, previousMembers]);
+
+  const handleLoad = useCallback(async () => {
+    const json = await loadFile();
+    if (!json) return;
+    try {
+      const data = deserializeProject(json);
+      setInputs(data.inputs);
+      setPrestressDesigns(data.prestressDesigns);
+      if (data.memberOverrides) {
+        // We need to regenerate the model first, then apply overrides.
+        // Setting previousMembers to undefined triggers a fresh model,
+        // then we'll apply overrides via a follow-up effect.
+        setPreviousMembers(undefined);
+        // Store overrides to apply after model regenerates
+        setPendingOverrides(data.memberOverrides);
+      } else {
+        setPreviousMembers(undefined);
+        setPendingOverrides(null);
+      }
+    } catch {
+      alert('Failed to load file. The file may be corrupted or in an unsupported format.');
+    }
+  }, []);
+
+  const [pendingOverrides, setPendingOverrides] = useState<{ id: number; thicknessIn: number }[] | null>(null);
+
   // Generate frame model
   const frameModel: FrameModel = useMemo(() => {
     return generateFrameModel(
@@ -77,6 +108,27 @@ export default function App() {
       previousMembers
     );
   }, [inputs.panel, inputs.openings, inputs.supports, previousMembers]);
+
+  // Apply pending member thickness overrides after file load
+  useEffect(() => {
+    if (!pendingOverrides || frameModel.members.length === 0) return;
+    const overrideMap = new Map(pendingOverrides.map(o => [o.id, o.thicknessIn]));
+    const updatedMembers = frameModel.members.map(m => {
+      const t = overrideMap.get(m.id);
+      if (t !== undefined) {
+        return {
+          ...m,
+          thicknessIn: t,
+          thicknessOverridden: true,
+          areaIn2: t * m.depthIn,
+          inertiaIn4: t * Math.pow(m.depthIn, 3) / 12,
+        };
+      }
+      return m;
+    });
+    setPreviousMembers(updatedMembers);
+    setPendingOverrides(null);
+  }, [pendingOverrides, frameModel.members]);
 
   // Run analysis
   const analysisResult = useMemo(() => {
@@ -231,6 +283,22 @@ export default function App() {
             </button>
           ))}
           <div className="flex-1" />
+          <button
+            onClick={handleLoad}
+            className="mr-1 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+            style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+            title="Load project from file"
+          >
+            Open
+          </button>
+          <button
+            onClick={handleSave}
+            className="mr-3 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+            style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+            title="Save project to file"
+          >
+            Save
+          </button>
           <button
             onClick={toggleTheme}
             className="mr-3 px-3 py-1.5 rounded text-xs font-medium transition-colors"
