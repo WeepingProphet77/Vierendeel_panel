@@ -148,6 +148,8 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
           stresses={selectedStresses}
           material={material}
           savedDesign={prestressDesigns[selectedMember.id]}
+          allDesigns={prestressDesigns}
+          allMembers={frameModel.members}
           onSave={onSavePrestressDesign}
           onClear={onClearPrestressDesign}
           onClose={() => setPrestressModalOpen(false)}
