@@ -18,6 +18,51 @@ function chordGroupPrefix(label: string): string | null {
   return label.substring(0, comma).trim();
 }
 
+/**
+ * Adapt a design's section & layers to a different member's geometry.
+ * For rectangular sections: h and bw come from the target member; layer depths
+ * are shifted to maintain the same cover distance from the bottom face.
+ * For custom polygon sections: the section is used as-is (no automatic scaling).
+ * Returns null if any layer can't fit (cover exceeds target depth).
+ */
+function adaptDesignToMember(
+  section: PrestressSectionInput,
+  layers: SteelLayer[],
+  targetMember: Member,
+): { section: PrestressSectionInput; layers: SteelLayer[] } | null {
+  if (section.sectionType === 'custom') {
+    // Custom polygons can't be auto-adapted; use as-is
+    return { section, layers };
+  }
+
+  const designH = section.h;
+  const targetH = targetMember.depthIn;
+  const targetBw = targetMember.thicknessIn;
+
+  // Adjust each layer depth to maintain cover from bottom face
+  const adjustedLayers = layers.map(l => {
+    const coverFromBottom = designH - l.depth;
+    const newDepth = targetH - coverFromBottom;
+    return { ...l, depth: newDepth };
+  });
+
+  // Check that all layers fit within the target section
+  const minCover = 1.0; // minimum 1" from top
+  if (adjustedLayers.some(l => l.depth < minCover || l.depth > targetH)) {
+    return null; // steel doesn't fit
+  }
+
+  const adaptedSection: PrestressSectionInput = {
+    ...section,
+    h: targetH,
+    bw: targetBw,
+    bf: targetBw,
+    hf: targetH * 0.2,
+  };
+
+  return { section: adaptedSection, layers: adjustedLayers };
+}
+
 interface Props {
   member: Member;
   forces: MemberForces;
@@ -80,6 +125,37 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
     return allMembers.filter(m => m.id !== member.id && chordGroupPrefix(m.label) === chordPrefix);
   }, [chordPrefix, allMembers, member.id]);
 
+  // Preview adaptation results for each chord member (recomputed when section/layers change)
+  const chordAdaptations = useMemo(() => {
+    if (!applyToChord || chordMembers.length === 0) return [];
+    return chordMembers.map(cm => {
+      const adapted = adaptDesignToMember(section, layers, cm);
+      const cmForces = allForces.find(f => f.memberId === cm.id);
+      const cmMu = cmForces ? Math.abs(cmForces.maxMomentFtKips) : 0;
+
+      if (!adapted) {
+        return { member: cm, Mu: cmMu, ok: false as const, reason: 'Steel layers do not fit within section depth' };
+      }
+
+      // Re-run analysis with the adapted section
+      try {
+        const cmResult = analyzeBeam(adapted.section, adapted.layers);
+        return {
+          member: cm,
+          Mu: cmMu,
+          ok: true as const,
+          section: adapted.section,
+          layers: adapted.layers,
+          result: cmResult,
+          phiMnFt: cmResult.phiMnFt,
+          utilization: cmMu > 0 ? cmMu / cmResult.phiMnFt : 0,
+        };
+      } catch {
+        return { member: cm, Mu: cmMu, ok: false as const, reason: 'Analysis failed for adapted section' };
+      }
+    });
+  }, [applyToChord, chordMembers, section, layers, member, allForces]);
+
   const result = useMemo(() => {
     if (layers.length === 0) return null;
     if (layers.some(l => l.depth <= 0 || l.area <= 0)) return null;
@@ -131,48 +207,50 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {result && (
-              <button
-                onClick={() => {
-                  const thisMemberDesign: SavedPrestressDesign = {
-                    memberId: member.id,
-                    section,
-                    layers,
-                    result,
-                    Mu,
-                    phiMnFt: result.phiMnFt,
-                    utilization: Mu > 0 ? Mu / result.phiMnFt : 0,
-                  };
+            {result && (() => {
+              const hasChordErrors = applyToChord && chordAdaptations.some(a => !a.ok);
+              const validChordCount = chordAdaptations.filter(a => a.ok).length;
+              return (
+                <button
+                  onClick={() => {
+                    const thisMemberDesign: SavedPrestressDesign = {
+                      memberId: member.id,
+                      section,
+                      layers,
+                      result,
+                      Mu,
+                      phiMnFt: result.phiMnFt,
+                      utilization: Mu > 0 ? Mu / result.phiMnFt : 0,
+                    };
 
-                  if (applyToChord && chordMembers.length > 0) {
-                    // Build designs for all chord members using the same section & layers
-                    const designs: SavedPrestressDesign[] = [thisMemberDesign];
-                    for (const cm of chordMembers) {
-                      const cmForces = allForces.find(f => f.memberId === cm.id);
-                      const cmMu = cmForces ? Math.abs(cmForces.maxMomentFtKips) : 0;
-                      designs.push({
-                        memberId: cm.id,
-                        section,
-                        layers,
-                        result,
-                        Mu: cmMu,
-                        phiMnFt: result.phiMnFt,
-                        utilization: cmMu > 0 ? cmMu / result.phiMnFt : 0,
-                      });
+                    if (applyToChord && chordMembers.length > 0) {
+                      const designs: SavedPrestressDesign[] = [thisMemberDesign];
+                      for (const a of chordAdaptations) {
+                        if (!a.ok) continue;
+                        designs.push({
+                          memberId: a.member.id,
+                          section: a.section,
+                          layers: a.layers,
+                          result: a.result,
+                          Mu: a.Mu,
+                          phiMnFt: a.phiMnFt,
+                          utilization: a.utilization,
+                        });
+                      }
+                      onSaveBatch(designs);
+                    } else {
+                      onSave(thisMemberDesign);
                     }
-                    onSaveBatch(designs);
-                  } else {
-                    onSave(thisMemberDesign);
-                  }
-                  onClose();
-                }}
-                className="text-xs px-3 py-1.5 rounded font-semibold"
-                style={{ background: '#22c55e', color: 'white' }}>
-                {applyToChord && chordMembers.length > 0
-                  ? `Save to ${chordMembers.length + 1} Members`
-                  : 'Save & Close'}
-              </button>
-            )}
+                    onClose();
+                  }}
+                  className="text-xs px-3 py-1.5 rounded font-semibold"
+                  style={{ background: '#22c55e', color: 'white' }}>
+                  {applyToChord && chordMembers.length > 0
+                    ? `Save to ${validChordCount + 1} Member${validChordCount > 0 ? 's' : ''}${hasChordErrors ? ` (${chordAdaptations.length - validChordCount} skipped)` : ''}`
+                    : 'Save & Close'}
+                </button>
+              );
+            })()}
             {savedDesign && (
               <button
                 onClick={() => { onClear(member.id); onClose(); }}
@@ -223,17 +301,81 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
 
           {/* Continuous Reinforcement (apply to chord) */}
           {chordMembers.length > 0 && (
-            <div className="flex items-center gap-2 p-2 rounded" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
-              <input
-                type="checkbox"
-                id="apply-to-chord"
-                checked={applyToChord}
-                onChange={e => setApplyToChord(e.target.checked)}
-                className="accent-[var(--accent)]"
-              />
-              <label htmlFor="apply-to-chord" className="text-xs cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
-                Apply continuous reinforcement to all <strong>{chordPrefix}</strong> members ({chordMembers.length + 1} total)
-              </label>
+            <div className="p-2 rounded" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="apply-to-chord"
+                  checked={applyToChord}
+                  onChange={e => setApplyToChord(e.target.checked)}
+                  className="accent-[var(--accent)]"
+                />
+                <label htmlFor="apply-to-chord" className="text-xs cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
+                  Continuous reinforcement — apply to all <strong>{chordPrefix}</strong> members ({chordMembers.length + 1} total)
+                </label>
+              </div>
+              {applyToChord && (
+                <div className="mt-2">
+                  <div className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>
+                    Section depth adapts to each member. Steel cover from bottom face is maintained.
+                  </div>
+                  {result && chordAdaptations.length > 0 && (
+                    <table className="w-full text-xs" style={{ fontSize: '0.65rem' }}>
+                      <thead>
+                        <tr style={{ color: 'var(--text-tertiary)' }}>
+                          <th className="text-left py-0.5 pr-2">Member</th>
+                          <th className="text-right py-0.5 px-1">h (in)</th>
+                          <th className="text-right py-0.5 px-1">Mu (ft-k)</th>
+                          <th className="text-right py-0.5 px-1">{'\u03C6'}Mn (ft-k)</th>
+                          <th className="text-right py-0.5 px-1">Util.</th>
+                          <th className="text-right py-0.5 pl-1">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {/* Current member (design basis) */}
+                        <tr style={{ color: 'var(--accent)' }}>
+                          <td className="py-0.5 pr-2 truncate max-w-32" title={member.label}>
+                            {member.id}: {member.label.split(',')[0]}*
+                          </td>
+                          <td className="text-right py-0.5 px-1">{section.h.toFixed(1)}</td>
+                          <td className="text-right py-0.5 px-1">{Mu.toFixed(1)}</td>
+                          <td className="text-right py-0.5 px-1">{result.phiMnFt.toFixed(1)}</td>
+                          <td className="text-right py-0.5 px-1">{(Mu > 0 ? (Mu / result.phiMnFt * 100) : 0).toFixed(0)}%</td>
+                          <td className="text-right py-0.5 pl-1 text-green-400">Design basis</td>
+                        </tr>
+                        {chordAdaptations.map(a => (
+                          <tr key={a.member.id} style={{ color: a.ok ? 'var(--text-secondary)' : '#ef4444' }}>
+                            <td className="py-0.5 pr-2 truncate max-w-32" title={a.member.label}>
+                              {a.member.id}: {a.member.label.split(',')[0]}
+                            </td>
+                            {a.ok ? (
+                              <>
+                                <td className="text-right py-0.5 px-1">{a.section.h.toFixed(1)}</td>
+                                <td className="text-right py-0.5 px-1">{a.Mu.toFixed(1)}</td>
+                                <td className="text-right py-0.5 px-1">{a.phiMnFt.toFixed(1)}</td>
+                                <td className={`text-right py-0.5 px-1 font-semibold ${a.utilization <= 1.0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {(a.utilization * 100).toFixed(0)}%
+                                </td>
+                                <td className="text-right py-0.5 pl-1">
+                                  {a.section.h !== section.h ? (
+                                    <span style={{ color: 'var(--text-tertiary)' }}>h adapted</span>
+                                  ) : (
+                                    <span className="text-green-400">same</span>
+                                  )}
+                                </td>
+                              </>
+                            ) : (
+                              <td colSpan={5} className="text-right py-0.5 px-1" style={{ color: '#ef4444' }}>
+                                {a.reason} — skipped
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
