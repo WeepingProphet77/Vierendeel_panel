@@ -118,6 +118,18 @@ export default function App() {
     );
   }, [inputs.panel, inputs.openings, inputs.supports, previousMembers]);
 
+  // Clean up orphaned designs when member IDs change (topology change)
+  useEffect(() => {
+    const memberIds = new Set(frameModel.members.map(m => m.id));
+    setPrestressDesigns(prev => {
+      const orphanIds = Object.keys(prev).map(Number).filter(id => !memberIds.has(id));
+      if (orphanIds.length === 0) return prev;
+      const next = { ...prev };
+      for (const id of orphanIds) delete next[id];
+      return next;
+    });
+  }, [frameModel.members]);
+
   // Apply pending member thickness overrides after file load
   useEffect(() => {
     if (!pendingOverrides || frameModel.members.length === 0) return;

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type { FrameModel, AnalysisResults, AppInputs, SavedPrestressDesign } from '../types';
+import { isDesignStale } from '../types';
 
 interface Props {
   frameModel: FrameModel;
@@ -175,6 +176,7 @@ export default function SummaryTab({ frameModel, results, inputs, prestressDesig
             {sortedMembers.map(s => {
               const m = frameModel.members.find(mm => mm.id === s.memberId)!;
               const pd = prestressDesigns[s.memberId];
+              const stale = pd ? isDesignStale(pd, m, inputs.material.fcPsi / 1000) : false;
               const govTRatio = s.governingTensilePsi / fr;
               const govCRatio = s.governingCompressivePsi / fc_limit;
 
@@ -200,9 +202,13 @@ export default function SummaryTab({ frameModel, results, inputs, prestressDesig
                   </td>
                   <td>
                     {pd ? (
-                      <span className={`text-xs font-semibold ${pd.utilization <= 1.0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {(pd.utilization * 100).toFixed(0)}% util
-                      </span>
+                      stale ? (
+                        <span className="text-xs font-semibold text-yellow-400">Stale</span>
+                      ) : (
+                        <span className={`text-xs font-semibold ${pd.utilization <= 1.0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {(pd.utilization * 100).toFixed(0)}% util
+                        </span>
+                      )
                     ) : (
                       <span style={{ color: 'var(--text-hint)' }}>—</span>
                     )}

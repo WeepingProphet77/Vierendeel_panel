@@ -201,6 +201,15 @@ export interface MemberPrestressDesign {
   result: PrestressDesignResult | null;
 }
 
+/** Check if a saved design's context matches the current member geometry */
+export function isDesignStale(design: SavedPrestressDesign, member: { depthIn: number; thicknessIn: number }, fcKsi: number): boolean {
+  if (!design.designContext) return false; // legacy designs without context are assumed current
+  const dc = design.designContext;
+  return Math.abs(dc.depthIn - member.depthIn) > 0.01
+    || Math.abs(dc.thicknessIn - member.thicknessIn) > 0.01
+    || Math.abs(dc.fcKsi - fcKsi) > 0.01;
+}
+
 /** Persisted prestress design with computed summary fields for table display */
 export interface SavedPrestressDesign {
   memberId: number;
@@ -210,4 +219,10 @@ export interface SavedPrestressDesign {
   Mu: number;          // kip-ft (factored moment demand)
   phiMnFt: number;     // kip-ft (design capacity)
   utilization: number;  // Mu / φMn
+  /** Snapshot of member geometry at design time, for staleness detection */
+  designContext?: {
+    depthIn: number;
+    thicknessIn: number;
+    fcKsi: number;
+  };
 }
