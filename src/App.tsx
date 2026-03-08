@@ -60,6 +60,14 @@ export default function App() {
     setPrestressDesigns(prev => ({ ...prev, [design.memberId]: design }));
   }, []);
 
+  const handleSavePrestressBatch = useCallback((designs: SavedPrestressDesign[]) => {
+    setPrestressDesigns(prev => {
+      const next = { ...prev };
+      for (const d of designs) next[d.memberId] = d;
+      return next;
+    });
+  }, []);
+
   const handleClearPrestressDesign = useCallback((memberId: number) => {
     setPrestressDesigns(prev => {
       const next = { ...prev };
@@ -288,6 +296,7 @@ export default function App() {
               onSelectMember={setSelectedMemberId}
               prestressDesigns={prestressDesigns}
               onSavePrestressDesign={handleSavePrestressDesign}
+              onSavePrestressBatch={handleSavePrestressBatch}
               onClearPrestressDesign={handleClearPrestressDesign}
             />
           )}

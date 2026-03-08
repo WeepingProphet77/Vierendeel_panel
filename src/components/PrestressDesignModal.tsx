@@ -11,6 +11,13 @@ import steelPresets from '../data/steelPresets';
 import PrestressDesignResults from './PrestressDesignResults';
 import CustomShapeEditor from './CustomShapeEditor';
 
+/** Extract chord group prefix from a member label, e.g. "Bottom Spandrel" from "Bottom Spandrel, Left Edge to Pier 1" */
+function chordGroupPrefix(label: string): string | null {
+  const comma = label.indexOf(',');
+  if (comma < 0) return null;
+  return label.substring(0, comma).trim();
+}
+
 interface Props {
   member: Member;
   forces: MemberForces;
@@ -19,7 +26,9 @@ interface Props {
   savedDesign?: SavedPrestressDesign;
   allDesigns: Record<number, SavedPrestressDesign>;
   allMembers: Member[];
+  allForces: MemberForces[];
   onSave: (design: SavedPrestressDesign) => void;
+  onSaveBatch: (designs: SavedPrestressDesign[]) => void;
   onClear: (memberId: number) => void;
   onClose: () => void;
 }
@@ -48,7 +57,7 @@ function makeLayer(preset: SteelPreset): SteelLayer {
   };
 }
 
-export default function PrestressDesignModal({ member, forces, stresses, material, savedDesign, allDesigns, allMembers, onSave, onClear, onClose }: Props) {
+export default function PrestressDesignModal({ member, forces, stresses, material, savedDesign, allDesigns, allMembers, allForces, onSave, onSaveBatch, onClear, onClose }: Props) {
   const [section, setSection] = useState<PrestressSectionInput>(() =>
     savedDesign ? savedDesign.section : defaultSection(member, material)
   );
@@ -59,9 +68,17 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
     layer.depth = member.depthIn - 2.5; // typical cover
     return [layer];
   });
+  const [applyToChord, setApplyToChord] = useState(false);
 
   const Mu = Math.abs(forces.maxMomentFtKips);
   const Mservice = Mu; // simplified: same as factored for display
+
+  // Identify chord group: other members with same label prefix (e.g. "Bottom Spandrel")
+  const chordPrefix = useMemo(() => chordGroupPrefix(member.label), [member.label]);
+  const chordMembers = useMemo(() => {
+    if (!chordPrefix) return [];
+    return allMembers.filter(m => m.id !== member.id && chordGroupPrefix(m.label) === chordPrefix);
+  }, [chordPrefix, allMembers, member.id]);
 
   const result = useMemo(() => {
     if (layers.length === 0) return null;
@@ -117,7 +134,7 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
             {result && (
               <button
                 onClick={() => {
-                  onSave({
+                  const thisMemberDesign: SavedPrestressDesign = {
                     memberId: member.id,
                     section,
                     layers,
@@ -125,12 +142,35 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
                     Mu,
                     phiMnFt: result.phiMnFt,
                     utilization: Mu > 0 ? Mu / result.phiMnFt : 0,
-                  });
+                  };
+
+                  if (applyToChord && chordMembers.length > 0) {
+                    // Build designs for all chord members using the same section & layers
+                    const designs: SavedPrestressDesign[] = [thisMemberDesign];
+                    for (const cm of chordMembers) {
+                      const cmForces = allForces.find(f => f.memberId === cm.id);
+                      const cmMu = cmForces ? Math.abs(cmForces.maxMomentFtKips) : 0;
+                      designs.push({
+                        memberId: cm.id,
+                        section,
+                        layers,
+                        result,
+                        Mu: cmMu,
+                        phiMnFt: result.phiMnFt,
+                        utilization: cmMu > 0 ? cmMu / result.phiMnFt : 0,
+                      });
+                    }
+                    onSaveBatch(designs);
+                  } else {
+                    onSave(thisMemberDesign);
+                  }
                   onClose();
                 }}
                 className="text-xs px-3 py-1.5 rounded font-semibold"
                 style={{ background: '#22c55e', color: 'white' }}>
-                Save & Close
+                {applyToChord && chordMembers.length > 0
+                  ? `Save to ${chordMembers.length + 1} Members`
+                  : 'Save & Close'}
               </button>
             )}
             {savedDesign && (
@@ -180,6 +220,22 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
               </div>
             );
           })()}
+
+          {/* Continuous Reinforcement (apply to chord) */}
+          {chordMembers.length > 0 && (
+            <div className="flex items-center gap-2 p-2 rounded" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+              <input
+                type="checkbox"
+                id="apply-to-chord"
+                checked={applyToChord}
+                onChange={e => setApplyToChord(e.target.checked)}
+                className="accent-[var(--accent)]"
+              />
+              <label htmlFor="apply-to-chord" className="text-xs cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
+                Apply continuous reinforcement to all <strong>{chordPrefix}</strong> members ({chordMembers.length + 1} total)
+              </label>
+            </div>
+          )}
 
           {/* Section Geometry */}
           <div>
