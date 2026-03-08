@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import type { FrameModel, AppInputs, Node } from '../types';
+import type { FrameModel, AppInputs, Node, SavedPrestressDesign } from '../types';
 
 interface Props {
   frameModel: FrameModel;
   inputs: AppInputs;
   selectedMemberId: number | null;
   onSelectMember: (id: number | null) => void;
+  prestressDesigns?: Record<number, SavedPrestressDesign>;
 }
 
 function SupportSymbol({ x, y, type, scale }: { x: number; y: number; type: 'pin' | 'roller'; scale: number }) {
@@ -36,8 +37,9 @@ function SupportSymbol({ x, y, type, scale }: { x: number; y: number; type: 'pin
   );
 }
 
-export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelectMember }: Props) {
+export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelectMember, prestressDesigns = {} }: Props) {
   const [hoveredMember, setHoveredMember] = useState<number | null>(null);
+  const [showReinforcement, setShowReinforcement] = useState(true);
   const { nodes, members } = frameModel;
 
   const viewBox = useMemo(() => {
@@ -67,6 +69,17 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
 
   return (
     <div>
+      {/* Toolbar */}
+      {Object.keys(prestressDesigns).length > 0 && (
+        <div className="flex items-center gap-3 mb-2">
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
+            <input type="checkbox" checked={showReinforcement} onChange={e => setShowReinforcement(e.target.checked)}
+              className="accent-[var(--accent)]" />
+            Show Reinforcement
+          </label>
+        </div>
+      )}
+
       {/* SVG Visualization */}
       <div className="rounded mb-4 overflow-auto flex justify-center" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)' }}>
         <svg
@@ -149,6 +162,112 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
               );
             })}
 
+            {/* Reinforcement overlay */}
+            {showReinforcement && members.map(m => {
+              const pd = prestressDesigns[m.id];
+              if (!pd) return null;
+
+              const sn = getNode(m.startNodeId);
+              const en = getNode(m.endNodeId);
+              const dx = en.x - sn.x;
+              const dy = en.y - sn.y;
+              const len = Math.sqrt(dx * dx + dy * dy);
+              if (len < 0.001) return null;
+
+              const ux = dx / len;
+              const uy = dy / len;
+              // Normal (perpendicular) direction — depth extends this way
+              const nx = -uy;
+              const ny = ux;
+
+              const depthFt = m.depthIn / 12;
+              const halfD = depthFt / 2;
+
+              // Utilization color
+              const util = pd.utilization;
+              const outlineColor = util <= 1.0 ? '#22c55e' : '#ef4444';
+
+              // Use flexible span endpoints
+              const rsX = sn.x + ux * m.rigidOffsetStartFt;
+              const rsY = sn.y + uy * m.rigidOffsetStartFt;
+              const reX = en.x - ux * m.rigidOffsetEndFt;
+              const reY = en.y - uy * m.rigidOffsetEndFt;
+
+              // Build section outline for the flexible span
+              let sectionPath: string;
+              if (pd.section.sectionType === 'custom' && pd.section.polygon && pd.section.polygon.length >= 3) {
+                // Custom polygon: draw profile at the member midpoint, aligned to member axis
+                // The polygon is defined in inches with y=0 at top, so map to model coords
+                const poly = pd.section.polygon;
+                const midX = (rsX + reX) / 2;
+                const midY = (rsY + reY) / 2;
+                const polyScale = 1 / 12; // inches → feet
+                // Find polygon centroid for centering
+                let minPy = Infinity, maxPy = -Infinity, minPx = Infinity, maxPx = -Infinity;
+                for (const v of poly) {
+                  if (v.y < minPy) minPy = v.y;
+                  if (v.y > maxPy) maxPy = v.y;
+                  if (v.x < minPx) minPx = v.x;
+                  if (v.x > maxPx) maxPx = v.x;
+                }
+                const cx = (minPx + maxPx) / 2;
+                const cy = (minPy + maxPy) / 2;
+
+                sectionPath = poly.map((v, i) => {
+                  // Center and scale polygon, map to model coords
+                  // Polygon x → along member axis, polygon y → depth (perpendicular)
+                  const localAlong = (v.x - cx) * polyScale;
+                  const localPerp = -(v.y - cy) * polyScale; // flip y: polygon y=0 is top, model normal points "up"
+                  const px = midX + ux * localAlong + nx * localPerp;
+                  const py = midY + uy * localAlong + ny * localPerp;
+                  return (i === 0 ? 'M ' : 'L ') + `${px},${py}`;
+                }).join(' ') + ' Z';
+              } else {
+                // Rectangular: draw rectangle along the flexible span
+                const c1x = rsX + nx * halfD;
+                const c1y = rsY + ny * halfD;
+                const c2x = reX + nx * halfD;
+                const c2y = reY + ny * halfD;
+                const c3x = reX - nx * halfD;
+                const c3y = reY - ny * halfD;
+                const c4x = rsX - nx * halfD;
+                const c4y = rsY - ny * halfD;
+                sectionPath = `M ${c1x},${c1y} L ${c2x},${c2y} L ${c3x},${c3y} L ${c4x},${c4y} Z`;
+              }
+
+              // Steel layer marks (small ticks perpendicular to member axis)
+              const layerMarks = pd.layers.map((layer, li) => {
+                // layer.depth is inches from top of section
+                const offsetFromCenter = (m.depthIn / 2 - layer.depth) / 12; // feet from centerline (positive = toward top)
+                const tickLen = Math.max(depthFt * 0.15, 0.15); // tick half-length along member
+
+                // Draw tick at midpoint of flexible span
+                const midAlongX = (rsX + reX) / 2;
+                const midAlongY = (rsY + reY) / 2;
+                const cx = midAlongX + nx * offsetFromCenter;
+                const cy = midAlongY + ny * offsetFromCenter;
+
+                return (
+                  <line key={li}
+                    x1={cx - ux * tickLen} y1={cy - uy * tickLen}
+                    x2={cx + ux * tickLen} y2={cy + uy * tickLen}
+                    stroke="#ef4444" strokeWidth={1.5 / scale} opacity={0.8}
+                  />
+                );
+              });
+
+              return (
+                <g key={`reinf-${m.id}`}>
+                  <path d={sectionPath}
+                    fill={outlineColor} fillOpacity={0.08}
+                    stroke={outlineColor} strokeWidth={1 / scale}
+                    strokeDasharray={`${3 / scale},${2 / scale}`} opacity={0.6}
+                  />
+                  {layerMarks}
+                </g>
+              );
+            })}
+
             {/* Nodes */}
             {nodes.map(n => (
               <g key={n.id}>
@@ -176,22 +295,43 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
       </div>
 
       {/* Member info tooltip */}
-      {activeMember && (
-        <div className="mb-4 p-3 rounded text-xs" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
-          <div className="font-semibold mb-1" style={{ color: 'var(--accent)' }}>Member {activeMember.id}: {activeMember.label}</div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-secondary)' }}>
-            <div>Type: {activeMember.orientation}</div>
-            <div>CL Length: {activeMember.centerlineLengthFt.toFixed(3)} ft</div>
-            <div>Flexible Length: {activeMember.flexibleLengthFt.toFixed(3)} ft</div>
-            <div>Thickness: {activeMember.thicknessIn.toFixed(1)} in{activeMember.thicknessOverridden ? ' (override)' : ''}</div>
-            <div>Depth: {activeMember.depthIn.toFixed(1)} in</div>
-            <div>Offset Start: {activeMember.rigidOffsetStartFt.toFixed(3)} ft</div>
-            <div>Offset End: {activeMember.rigidOffsetEndFt.toFixed(3)} ft</div>
-            <div>A: {activeMember.areaIn2.toFixed(1)} in²</div>
-            <div>I: {activeMember.inertiaIn4.toFixed(1)} in⁴</div>
+      {activeMember && (() => {
+        const pd = prestressDesigns[activeMember.id];
+        return (
+          <div className="mb-4 p-3 rounded text-xs" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+            <div className="font-semibold mb-1" style={{ color: 'var(--accent)' }}>Member {activeMember.id}: {activeMember.label}</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-secondary)' }}>
+              <div>Type: {activeMember.orientation}</div>
+              <div>CL Length: {activeMember.centerlineLengthFt.toFixed(3)} ft</div>
+              <div>Flexible Length: {activeMember.flexibleLengthFt.toFixed(3)} ft</div>
+              <div>Thickness: {activeMember.thicknessIn.toFixed(1)} in{activeMember.thicknessOverridden ? ' (override)' : ''}</div>
+              <div>Depth: {activeMember.depthIn.toFixed(1)} in</div>
+              <div>Offset Start: {activeMember.rigidOffsetStartFt.toFixed(3)} ft</div>
+              <div>Offset End: {activeMember.rigidOffsetEndFt.toFixed(3)} ft</div>
+              <div>A: {activeMember.areaIn2.toFixed(1)} in²</div>
+              <div>I: {activeMember.inertiaIn4.toFixed(1)} in⁴</div>
+            </div>
+            {pd && (
+              <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+                <div className="font-semibold mb-0.5" style={{ color: pd.utilization <= 1.0 ? '#22c55e' : '#ef4444' }}>
+                  Reinforcement Design — {(pd.utilization * 100).toFixed(0)}% utilization
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-secondary)' }}>
+                  <div>Section: {pd.section.sectionType === 'custom' ? 'Custom' : `${pd.section.h.toFixed(1)}" × ${pd.section.bw.toFixed(1)}"`}</div>
+                  <div>f'c: {pd.section.fc.toFixed(1)} ksi</div>
+                  <div>Mu: {pd.Mu.toFixed(2)} ft-k</div>
+                  <div>{'\u03C6'}Mn: {pd.phiMnFt.toFixed(2)} ft-k</div>
+                  {pd.layers.map((l, i) => (
+                    <div key={i} className="col-span-2">
+                      Layer {i + 1}: {l.steel.name}, As={l.area.toFixed(3)} in², d={l.depth.toFixed(1)}"
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Node Table */}
       <div className="mb-4">

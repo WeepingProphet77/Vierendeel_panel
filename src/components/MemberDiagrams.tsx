@@ -97,20 +97,19 @@ function computeStressDiagram(
   const P = forces.axialKips;
   const axialStressPsi = (P * 1000) / A; // kips → lbs, / in²
 
-  const tensionFiber: DiagramPoint[] = [];
-  const compressionFiber: DiagramPoint[] = [];
+  const bottomFiber: DiagramPoint[] = [];
+  const topFiber: DiagramPoint[] = [];
 
   for (const pt of momentPts) {
     const M_kipIn = pt.value * 12; // ft-kips → kip-in
     const bendingPsi = (Math.abs(M_kipIn) * c / I) * 1000; // ksi → psi
     // Sign of bending: if M > 0, bottom fiber is in tension (for a horizontal beam with +y up)
-    // For diagrams, show as ± from the member axis
     const sign = M_kipIn >= 0 ? 1 : -1;
-    tensionFiber.push({ x: pt.x, value: axialStressPsi + sign * bendingPsi });
-    compressionFiber.push({ x: pt.x, value: axialStressPsi - sign * bendingPsi });
+    bottomFiber.push({ x: pt.x, value: axialStressPsi + sign * bendingPsi });
+    topFiber.push({ x: pt.x, value: axialStressPsi - sign * bendingPsi });
   }
 
-  return { tensionFiber, compressionFiber };
+  return { bottomFiber, topFiber };
 }
 
 // Colors
@@ -399,18 +398,18 @@ export default function MemberDiagrams({ member, forces, stresses, material, onO
     return prestressPrecompression(prestressDesign);
   }, [prestressDesign]);
 
-  const { tensionFiber, compressionFiber } = useMemo(() => {
+  const { bottomFiber, topFiber } = useMemo(() => {
     const raw = computeStressDiagram(member, forces, moment);
     if (precomp.tensionFiberPsi === 0 && precomp.axialPsi === 0) return raw;
     // Prestress shifts stresses: reduces tension, adds compression
     // Convention: positive = tension, negative = compression
     // Precompression reduces all values (shifts toward compression)
     return {
-      tensionFiber: raw.tensionFiber.map(p => ({
+      bottomFiber: raw.bottomFiber.map(p => ({
         ...p,
         value: p.value - precomp.tensionFiberPsi,
       })),
-      compressionFiber: raw.compressionFiber.map(p => ({
+      topFiber: raw.topFiber.map(p => ({
         ...p,
         value: p.value - precomp.axialPsi,
       })),
@@ -485,10 +484,10 @@ export default function MemberDiagrams({ member, forces, stresses, material, onO
 
       <DiagramSvg
         title={prestressDesign ? "Combined Stress (P/A ± Mc/I − Prestress)" : "Combined Stress (P/A ± Mc/I)"}
-        points={tensionFiber}
-        points2={compressionFiber}
-        label1="Tension fiber"
-        label2="Compression fiber"
+        points={bottomFiber}
+        points2={topFiber}
+        label1="Bottom fiber"
+        label2="Top fiber"
         memberLength={member.centerlineLengthFt}
         rigidStart={member.rigidOffsetStartFt}
         rigidEnd={member.rigidOffsetEndFt}

@@ -353,6 +353,7 @@ export default function App() {
               inputs={inputs}
               selectedMemberId={selectedMemberId}
               onSelectMember={setSelectedMemberId}
+              prestressDesigns={prestressDesigns}
             />
           )}
           {activeTab === 'results' && (
