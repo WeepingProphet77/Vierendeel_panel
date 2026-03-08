@@ -327,6 +327,103 @@ function fixedEndForces(
   return f_flex;
 }
 
+/**
+ * Compute the equivalent global nodal forces for a prestress tendon on a member.
+ * The tendon at constant eccentricity e below the centroid with force P creates:
+ *   - Axial compression P
+ *   - Constant moment -P*e (hogging → upward camber)
+ *
+ * Returns a 6-element vector [Fx_start, Fy_start, Mz_start, Fx_end, Fy_end, Mz_end]
+ * in global coordinates, to be assembled into the global load vector.
+ */
+export function prestressEquivalentForces(
+  member: Member,
+  startNode: Node,
+  endNode: Node,
+  P_kips: number,
+  e_in: number,
+): number[] {
+  // Convert to consistent units (kips, ft)
+  const P = P_kips;        // kips
+  const e_ft = e_in / 12;  // eccentricity in ft
+
+  // Local flexible-portion equivalent forces:
+  // Axial: +P at start (rightward into member), -P at end (leftward into member) → compression
+  // Moment: -P*e at start, +P*e at end → constant hogging moment throughout
+  const f_flex = [P, 0, -P * e_ft, -P, 0, P * e_ft];
+
+  // Transform through rigid offsets to node positions
+  const Trigid = rigidOffsetTransform(member.rigidOffsetStartFt, member.rigidOffsetEndFt);
+  const TrigidT = matTranspose(Trigid);
+  const f_node = matMulVec(TrigidT, f_flex);
+
+  // Rotate to global coordinates
+  const angle = memberAngle(startNode, endNode);
+  const Trot = rotationMatrix(angle);
+  const TrotT = matTranspose(Trot);
+  return matMulVec(TrotT, f_node);
+}
+
+/**
+ * Assemble the global stiffness matrix and solve for an arbitrary load vector.
+ * Returns the displacement vector, or null if the solve fails.
+ * Used by the prestress camber calculation to superpose prestress effects.
+ */
+export function solveForLoadVector(
+  nodes: Node[],
+  members: Member[],
+  material: MaterialProperties,
+  F_input: number[],
+): number[] | null {
+  const nDof = nodes.length * 3;
+  const E_psi = material.ePsi;
+  const E_ksf = E_psi * 144 / 1000;
+
+  const K: number[][] = Array.from({ length: nDof }, () => Array(nDof).fill(0));
+  const nodeIndex = new Map<number, number>();
+  nodes.forEach((n, i) => nodeIndex.set(n.id, i));
+
+  for (const member of members) {
+    const startNode = nodes.find(n => n.id === member.startNodeId)!;
+    const endNode = nodes.find(n => n.id === member.endNodeId)!;
+    const Kg = memberGlobalStiffness(member, startNode, endNode, E_ksf);
+    const si = nodeIndex.get(member.startNodeId)! * 3;
+    const ei = nodeIndex.get(member.endNodeId)! * 3;
+    const dofMap = [si, si + 1, si + 2, ei, ei + 1, ei + 2];
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 6; j++) {
+        K[dofMap[i]][dofMap[j]] += Kg[i][j];
+      }
+    }
+  }
+
+  // Apply boundary conditions
+  const restrainedDofs: number[] = [];
+  for (const node of nodes) {
+    const ni = nodeIndex.get(node.id)! * 3;
+    if (node.restraints.dx) restrainedDofs.push(ni);
+    if (node.restraints.dy) restrainedDofs.push(ni + 1);
+    if (node.restraints.rz) restrainedDofs.push(ni + 2);
+  }
+
+  const F = [...F_input];
+  for (const dof of restrainedDofs) {
+    for (let i = 0; i < nDof; i++) {
+      K[dof][i] = 0;
+      K[i][dof] = 0;
+    }
+    K[dof][dof] = 1;
+    F[dof] = 0;
+  }
+
+  try {
+    const Kinv = matInverse(K);
+    return matMulVec(Kinv, F);
+  } catch {
+    return null;
+  }
+}
+
 export function runAnalysis(
   nodes: Node[],
   members: Member[],
