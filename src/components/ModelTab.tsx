@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { FrameModel, AppInputs, Node, SavedPrestressDesign } from '../types';
+import { isDesignStale } from '../types';
 
 interface Props {
   frameModel: FrameModel;
@@ -183,9 +184,10 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
               const depthFt = m.depthIn / 12;
               const halfD = depthFt / 2;
 
-              // Utilization color
-              const util = pd.utilization;
-              const outlineColor = util <= 1.0 ? '#22c55e' : '#ef4444';
+              // Utilization color — amber for stale designs
+              const fcKsi = inputs.material.fcPsi / 1000;
+              const stale = isDesignStale(pd, m, fcKsi);
+              const outlineColor = stale ? '#eab308' : pd.utilization <= 1.0 ? '#22c55e' : '#ef4444';
 
               // Use flexible span endpoints
               const rsX = sn.x + ux * m.rigidOffsetStartFt;
@@ -297,6 +299,7 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
       {/* Member info tooltip */}
       {activeMember && (() => {
         const pd = prestressDesigns[activeMember.id];
+        const pdStale = pd ? isDesignStale(pd, activeMember, inputs.material.fcPsi / 1000) : false;
         return (
           <div className="mb-4 p-3 rounded text-xs" style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
             <div className="font-semibold mb-1" style={{ color: 'var(--accent)' }}>Member {activeMember.id}: {activeMember.label}</div>
@@ -313,8 +316,8 @@ export default function ModelTab({ frameModel, inputs, selectedMemberId, onSelec
             </div>
             {pd && (
               <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-                <div className="font-semibold mb-0.5" style={{ color: pd.utilization <= 1.0 ? '#22c55e' : '#ef4444' }}>
-                  Reinforcement Design — {(pd.utilization * 100).toFixed(0)}% utilization
+                <div className="font-semibold mb-0.5" style={{ color: pdStale ? '#eab308' : pd.utilization <= 1.0 ? '#22c55e' : '#ef4444' }}>
+                  Reinforcement Design — {pdStale ? 'STALE — member geometry changed' : `${(pd.utilization * 100).toFixed(0)}% utilization`}
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-secondary)' }}>
                   <div>Section: {pd.section.sectionType === 'custom' ? 'Custom' : `${pd.section.h.toFixed(1)}" × ${pd.section.bw.toFixed(1)}"`}</div>

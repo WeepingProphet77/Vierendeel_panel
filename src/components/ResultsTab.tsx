@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { FrameModel, AnalysisResults, MaterialProperties, SavedPrestressDesign } from '../types';
+import { isDesignStale } from '../types';
 import MemberDiagrams from './MemberDiagrams';
 import PrestressDesignModal from './PrestressDesignModal';
 
@@ -66,6 +67,8 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
               if (!forces || !stresses) return null;
 
               const pd = prestressDesigns[m.id];
+              const fcKsi = material.fcPsi / 1000;
+              const stale = pd ? isDesignStale(pd, m, fcKsi) : false;
 
               const isSelected = m.id === selectedMemberId;
               let rowClass = '';
@@ -109,9 +112,26 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
                   {pd ? (
                     <>
                       <td>{pd.Mu.toFixed(2)}</td>
-                      <td style={{ color: 'var(--accent)' }}>{pd.phiMnFt.toFixed(2)}</td>
-                      <td className={`font-semibold ${pd.utilization <= 1.0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {(pd.utilization * 100).toFixed(0)}%
+                      <td style={{ color: stale ? '#eab308' : 'var(--accent)' }}>{pd.phiMnFt.toFixed(2)}</td>
+                      <td className={`font-semibold ${stale ? 'text-yellow-400' : pd.utilization <= 1.0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {stale ? 'Stale' : `${(pd.utilization * 100).toFixed(0)}%`}
+                      </td>
+                    </>
+                  ) : stresses.status === 'Cracked' || stresses.status === 'High Compression' ? (
+                    <>
+                      <td style={{ color: 'var(--text-hint)' }}>—</td>
+                      <td style={{ color: 'var(--text-hint)' }}>—</td>
+                      <td>
+                        <button
+                          className="text-xs px-1.5 py-0.5 rounded font-semibold"
+                          style={{ background: 'var(--accent)', color: 'white', fontSize: '0.6rem' }}
+                          onClick={e => {
+                            e.stopPropagation();
+                            onSelectMember(m.id);
+                            setPrestressModalOpen(true);
+                          }}>
+                          Design
+                        </button>
                       </td>
                     </>
                   ) : (

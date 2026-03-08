@@ -213,6 +213,7 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
               return (
                 <button
                   onClick={() => {
+                    const fcKsi = section.fc;
                     const thisMemberDesign: SavedPrestressDesign = {
                       memberId: member.id,
                       section,
@@ -221,6 +222,7 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
                       Mu,
                       phiMnFt: result.phiMnFt,
                       utilization: Mu > 0 ? Mu / result.phiMnFt : 0,
+                      designContext: { depthIn: member.depthIn, thicknessIn: member.thicknessIn, fcKsi },
                     };
 
                     if (applyToChord && chordMembers.length > 0) {
@@ -235,6 +237,7 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
                           Mu: a.Mu,
                           phiMnFt: a.phiMnFt,
                           utilization: a.utilization,
+                          designContext: { depthIn: a.member.depthIn, thicknessIn: a.member.thicknessIn, fcKsi },
                         });
                       }
                       onSaveBatch(designs);
@@ -430,15 +433,25 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
                 {section.polygon && section.polygon.length >= 3 && (() => {
                   const props = polygonSectionProperties(section.polygon);
                   if (!props) return null;
+                  const grossArea = member.thicknessIn * member.depthIn;
+                  const areaDelta = props.A - grossArea;
                   return (
-                    <div className="text-xs mt-1 p-2 rounded" style={{ background: 'var(--bg-input)', color: 'var(--text-tertiary)' }}>
-                      <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>Polygon: </span>
-                      A = {props.A.toFixed(1)} in{'\u00B2'} |
-                      yCg = {props.yCg.toFixed(2)} in |
-                      Ig = {props.Ig.toFixed(0)} in{'\u2074'} |
-                      h = {props.h.toFixed(2)} in |
-                      {section.polygon.length - 1} vertices
-                    </div>
+                    <>
+                      <div className="text-xs mt-1 p-2 rounded" style={{ background: 'var(--bg-input)', color: 'var(--text-tertiary)' }}>
+                        <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>Polygon: </span>
+                        A = {props.A.toFixed(1)} in{'\u00B2'} |
+                        yCg = {props.yCg.toFixed(2)} in |
+                        Ig = {props.Ig.toFixed(0)} in{'\u2074'} |
+                        h = {props.h.toFixed(2)} in |
+                        {section.polygon.length - 1} vertices
+                      </div>
+                      {Math.abs(areaDelta) > 0.5 && (
+                        <div className="text-xs mt-1 p-2 rounded" style={{ background: '#eab30810', border: '1px solid #eab30840', color: '#eab308' }}>
+                          Custom area ({props.A.toFixed(1)} in{'\u00B2'}) differs from gross rectangular section ({grossArea.toFixed(1)} in{'\u00B2'}) by {areaDelta > 0 ? '+' : ''}{areaDelta.toFixed(1)} in{'\u00B2'}.
+                          Frame analysis uses the gross rectangular section for self-weight and stiffness.
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
               </div>
