@@ -10,6 +10,7 @@ import ResultsTab from './components/ResultsTab';
 import DeflectionTab from './components/DeflectionTab';
 import SummaryTab from './components/SummaryTab';
 import { applyPrestressToResults } from './engine/prestressStressAdjustment';
+import { computePrestressCamber } from './engine/prestressCamber';
 import { serializeProject, deserializeProject, saveFile, loadFile } from './fileIO';
 
 function getDefaultOpenings(numOpenings: number, panelWidth: number, panelHeight: number): Opening[] {
@@ -58,6 +59,14 @@ export default function App() {
 
   const handleSavePrestressDesign = useCallback((design: SavedPrestressDesign) => {
     setPrestressDesigns(prev => ({ ...prev, [design.memberId]: design }));
+  }, []);
+
+  const handleSavePrestressBatch = useCallback((designs: SavedPrestressDesign[]) => {
+    setPrestressDesigns(prev => {
+      const next = { ...prev };
+      for (const d of designs) next[d.memberId] = d;
+      return next;
+    });
   }, []);
 
   const handleClearPrestressDesign = useCallback((memberId: number) => {
@@ -145,13 +154,24 @@ export default function App() {
     return result;
   }, [frameModel, inputs.openings, inputs.panel, inputs.material, inputs.loading]);
 
-  // Produce effective results with prestress-adjusted stresses
+  // Compute prestress camber displacements
+  const camberDisplacements = useMemo(() => {
+    if (!analysisResult || Object.keys(prestressDesigns).length === 0) return null;
+    return computePrestressCamber(
+      frameModel.nodes, frameModel.members, inputs.material, prestressDesigns
+    );
+  }, [analysisResult, frameModel.nodes, frameModel.members, inputs.material, prestressDesigns]);
+
+  // Produce effective results with prestress-adjusted stresses and camber
   const effectiveResults = useMemo(() => {
     if (!analysisResult) return null;
     const fr = 7.5 * Math.sqrt(inputs.material.fcPsi);
     const fcLimit = 0.60 * inputs.material.fcPsi;
-    return applyPrestressToResults(analysisResult, prestressDesigns, fr, fcLimit);
-  }, [analysisResult, prestressDesigns, inputs.material.fcPsi]);
+    return applyPrestressToResults(
+      analysisResult, prestressDesigns, fr, fcLimit,
+      camberDisplacements, frameModel.nodes
+    );
+  }, [analysisResult, prestressDesigns, inputs.material.fcPsi, camberDisplacements, frameModel.nodes]);
 
   // Run validation test on mount
   useEffect(() => {
@@ -344,6 +364,7 @@ export default function App() {
               onSelectMember={setSelectedMemberId}
               prestressDesigns={prestressDesigns}
               onSavePrestressDesign={handleSavePrestressDesign}
+              onSavePrestressBatch={handleSavePrestressBatch}
               onClearPrestressDesign={handleClearPrestressDesign}
             />
           )}

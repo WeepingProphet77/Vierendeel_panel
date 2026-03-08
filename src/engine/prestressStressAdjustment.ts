@@ -108,20 +108,49 @@ export function adjustMemberStresses(
 
 /**
  * Produce a full AnalysisResults with all member stresses adjusted for
- * any saved prestress designs. Everything else (forces, reactions, etc.)
- * is passed through unchanged.
+ * any saved prestress designs, and with camber displacements superposed
+ * onto the gravity displacements.
  */
 export function applyPrestressToResults(
   results: AnalysisResults,
   designs: Record<number, SavedPrestressDesign>,
   fr: number,
   fcLimit: number,
+  camberDisplacements: number[] | null,
+  nodes: { id: number }[],
 ): AnalysisResults {
   // Short-circuit if no designs
   if (Object.keys(designs).length === 0) return results;
 
+  // Superpose camber displacements onto gravity displacements
+  let displacements = results.displacements;
+  let maxDeflection = results.maxDeflection;
+
+  if (camberDisplacements && camberDisplacements.length === displacements.length) {
+    displacements = displacements.map((d, i) => d + camberDisplacements[i]);
+
+    // Recompute max deflection from combined displacements
+    let maxDefl = 0;
+    let maxDeflNode = 0;
+    const nodeIndex = new Map<number, number>();
+    nodes.forEach((n, i) => nodeIndex.set(n.id, i));
+
+    for (const node of nodes) {
+      const ni = nodeIndex.get(node.id)! * 3;
+      const dy = displacements[ni + 1]; // ft
+      const dyIn = dy * 12; // inches
+      if (Math.abs(dyIn) > Math.abs(maxDefl)) {
+        maxDefl = dyIn;
+        maxDeflNode = node.id;
+      }
+    }
+    maxDeflection = { valueIn: maxDefl, nodeId: maxDeflNode };
+  }
+
   return {
     ...results,
+    displacements,
+    maxDeflection,
     memberStresses: results.memberStresses.map(s =>
       adjustMemberStresses(s, designs[s.memberId], fr, fcLimit)
     ),

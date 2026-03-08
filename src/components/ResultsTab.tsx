@@ -11,10 +11,11 @@ interface Props {
   onSelectMember: (id: number | null) => void;
   prestressDesigns: Record<number, SavedPrestressDesign>;
   onSavePrestressDesign: (design: SavedPrestressDesign) => void;
+  onSavePrestressBatch: (designs: SavedPrestressDesign[]) => void;
   onClearPrestressDesign: (memberId: number) => void;
 }
 
-export default function ResultsTab({ frameModel, results, material, selectedMemberId, onSelectMember, prestressDesigns, onSavePrestressDesign, onClearPrestressDesign }: Props) {
+export default function ResultsTab({ frameModel, results, material, selectedMemberId, onSelectMember, prestressDesigns, onSavePrestressDesign, onSavePrestressBatch, onClearPrestressDesign }: Props) {
   const [prestressModalOpen, setPrestressModalOpen] = useState(false);
 
   if (!results) {
@@ -150,7 +151,9 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
           savedDesign={prestressDesigns[selectedMember.id]}
           allDesigns={prestressDesigns}
           allMembers={frameModel.members}
+          allForces={results.memberForces}
           onSave={onSavePrestressDesign}
+          onSaveBatch={onSavePrestressBatch}
           onClear={onClearPrestressDesign}
           onClose={() => setPrestressModalOpen(false)}
         />
