@@ -6,8 +6,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { Member, MemberForces, MemberStresses, MaterialProperties, PrestressSectionInput, SteelLayer, SteelPreset, SavedPrestressDesign } from '../types';
 import { analyzeBeam } from '../engine/prestressAnalysis';
+import { polygonSectionProperties } from '../engine/polygonSection';
 import steelPresets from '../data/steelPresets';
 import PrestressDesignResults from './PrestressDesignResults';
+import CustomShapeEditor from './CustomShapeEditor';
 
 interface Props {
   member: Member;
@@ -147,43 +149,67 @@ export default function PrestressDesignModal({ member, forces, stresses, materia
           {/* Section Geometry */}
           <div>
             <div className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Section Geometry</div>
-            <div className="grid grid-cols-6 gap-2">
+            <div className="grid grid-cols-6 gap-2 mb-3">
               <div className="col-span-2">
                 <label className="text-xs block mb-1" style={{ color: 'var(--text-tertiary)' }}>Type</label>
                 <select value={section.sectionType}
-                  onChange={e => updateSection('sectionType', e.target.value as PrestressSectionInput['sectionType'])}
+                  onChange={e => {
+                    const type = e.target.value as PrestressSectionInput['sectionType'];
+                    updateSection('sectionType', type);
+                    if (type === 'custom' && !section.polygon) {
+                      updateSection('polygon', []);
+                    }
+                  }}
                   className="w-full text-xs p-1.5 rounded"
                   style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                   <option value="rectangular">Rectangular</option>
-                  <option value="tbeam">T-Beam</option>
-                  <option value="doubletee">Double Tee</option>
-                  <option value="hollowcore">Hollow Core</option>
+                  <option value="custom">Custom Shape</option>
                 </select>
               </div>
-              <NumInput label="h (in)" value={section.h} onChange={v => updateSection('h', v)} />
-              <NumInput label="bw (in)" value={section.bw} onChange={v => updateSection('bw', v)} />
-              {(section.sectionType === 'tbeam' || section.sectionType === 'doubletee') && (
+              {section.sectionType === 'rectangular' && (
                 <>
-                  <NumInput label="bf (in)" value={section.bf} onChange={v => updateSection('bf', v)} />
-                  <NumInput label="hf (in)" value={section.hf} onChange={v => updateSection('hf', v)} />
-                </>
-              )}
-              {section.sectionType === 'doubletee' && (
-                <>
-                  <NumInput label="# Stems" value={section.numStems ?? 2} onChange={v => updateSection('numStems', v)} />
-                  <NumInput label="Stem W" value={section.stemWidth ?? section.bw} onChange={v => updateSection('stemWidth', v)} />
-                </>
-              )}
-              {section.sectionType === 'hollowcore' && (
-                <>
-                  <NumInput label="bf (in)" value={section.bf} onChange={v => updateSection('bf', v)} />
-                  <NumInput label="# Voids" value={section.numVoids ?? 0} onChange={v => updateSection('numVoids', v)} />
-                  <NumInput label="Void ∅" value={section.voidDiameter ?? 0} onChange={v => updateSection('voidDiameter', v)} />
-                  <NumInput label="Void d" value={section.voidCenterDepth ?? section.h / 2} onChange={v => updateSection('voidCenterDepth', v)} />
+                  <NumInput label="h (in)" value={section.h} onChange={v => updateSection('h', v)} />
+                  <NumInput label="bw (in)" value={section.bw} onChange={v => updateSection('bw', v)} />
                 </>
               )}
               <NumInput label="f'c (ksi)" value={section.fc} onChange={v => updateSection('fc', v)} step={0.5} />
             </div>
+
+            {/* Custom shape editor */}
+            {section.sectionType === 'custom' && (
+              <div className="mb-2">
+                <CustomShapeEditor
+                  polygon={section.polygon ?? []}
+                  onChange={poly => {
+                    // Update polygon and derive h, bw, bf from extents
+                    const props = poly.length >= 3 ? polygonSectionProperties(poly) : null;
+                    setSection(prev => ({
+                      ...prev,
+                      polygon: poly,
+                      h: props ? props.h : prev.h,
+                      bw: props ? Math.max(...poly.map(p => p.x)) - Math.min(...poly.map(p => p.x)) : prev.bw,
+                      bf: props ? Math.max(...poly.map(p => p.x)) - Math.min(...poly.map(p => p.x)) : prev.bf,
+                    }));
+                  }}
+                  maxWidth={Math.max(member.thicknessIn * 2, 24)}
+                  maxHeight={Math.max(member.depthIn * 1.2, 36)}
+                />
+                {section.polygon && section.polygon.length >= 3 && (() => {
+                  const props = polygonSectionProperties(section.polygon);
+                  if (!props) return null;
+                  return (
+                    <div className="text-xs mt-1 p-2 rounded" style={{ background: 'var(--bg-input)', color: 'var(--text-tertiary)' }}>
+                      <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>Polygon: </span>
+                      A = {props.A.toFixed(1)} in{'\u00B2'} |
+                      yCg = {props.yCg.toFixed(2)} in |
+                      Ig = {props.Ig.toFixed(0)} in{'\u2074'} |
+                      h = {props.h.toFixed(2)} in |
+                      {section.polygon.length - 1} vertices
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
 
           {/* Steel Layers */}

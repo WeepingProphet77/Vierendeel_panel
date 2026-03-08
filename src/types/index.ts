@@ -145,19 +145,14 @@ export interface SteelLayer {
 }
 
 export interface PrestressSectionInput {
-  sectionType: 'rectangular' | 'tbeam' | 'doubletee' | 'hollowcore';
+  sectionType: 'rectangular' | 'custom';
   bf: number;   // flange width, in
   bw: number;   // web width, in
   hf: number;   // flange depth, in
   h: number;    // total depth, in
   fc: number;   // f'c, ksi
-  // Double tee parameters
-  numStems?: number;
-  stemWidth?: number;
-  // Hollow core parameters
-  numVoids?: number;
-  voidDiameter?: number;
-  voidCenterDepth?: number;
+  // Custom polygon vertices (x,y in inches, y=0 is top)
+  polygon?: { x: number; y: number }[];
 }
 
 export interface PrestressDesignResult {
