@@ -796,23 +796,33 @@ export function runAnalysis(
   const equilibriumVertical = totalVerticalReaction + appliedVertical;
 
   // Moment equilibrium about the left support node
-  // Find reference node: first node where restraints.dx === true
+  // Mirror the vertical residual pattern: totalReactionMoment + appliedMoment ≈ 0
   const refNode = nodes.find(n => n.restraints.dx)!;
   const refX = refNode.x;
   const refY = refNode.y;
 
-  let momentResidual = 0;
+  // Sum of reaction moments (only at restrained DOFs)
+  let totalReactionMoment = 0;
   for (const node of nodes) {
     const ni = nodeIndex.get(node.id)! * 3;
     const armX = node.x - refX;
     const armY = node.y - refY;
-    // Net unbalanced force at each DOF = reaction - applied
-    const netFx = reactions_full[ni] - F_applied[ni];
-    const netFy = reactions_full[ni + 1] - F_applied[ni + 1];
-    const netMz = reactions_full[ni + 2] - F_applied[ni + 2];
-    // Moment contribution: horizontal force × -vertical arm, vertical force × horizontal arm, moment × 1
-    momentResidual += -netFx * armY + netFy * armX + netMz;
+    const rH = node.restraints.dx ? reactions_full[ni] - F_applied[ni] : 0;
+    const rV = node.restraints.dy ? reactions_full[ni + 1] - F_applied[ni + 1] : 0;
+    const rM = node.restraints.rz ? reactions_full[ni + 2] - F_applied[ni + 2] : 0;
+    totalReactionMoment += -rH * armY + rV * armX + rM;
   }
+
+  // Sum of applied load moments (all DOFs)
+  let appliedMoment = 0;
+  for (const node of nodes) {
+    const ni = nodeIndex.get(node.id)! * 3;
+    const armX = node.x - refX;
+    const armY = node.y - refY;
+    appliedMoment += -F_applied[ni] * armY + F_applied[ni + 1] * armX + F_applied[ni + 2];
+  }
+
+  const momentResidual = totalReactionMoment + appliedMoment;
 
   // Maximum deflection
   let maxDefl = 0;
