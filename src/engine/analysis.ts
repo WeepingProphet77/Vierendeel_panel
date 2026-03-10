@@ -140,8 +140,7 @@ function computeMemberLoads(
         // More robust: check if opening edges are within member span
         const openingWithinSpan = oLeft >= memberXStart - 0.01 && oRight <= memberXEnd + 0.01;
 
-        // Check if this is the strip immediately above or below the opening
-        const isAboveOpening = Math.abs(memberY - (oTop + dFt / 2)) < dFt;
+        // Check if this is the sill strip (immediately below the opening)
         const isBelowOpening = Math.abs(memberY - (oBot - dFt / 2)) < dFt;
 
         if (openingWithinSpan && isBelowOpening) {
