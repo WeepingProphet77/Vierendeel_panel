@@ -132,7 +132,6 @@ function computeMemberLoads(
 
       for (const o of openings) {
         const oBot = o.centerYFt - o.heightFt / 2;
-        const oTop = o.centerYFt + o.heightFt / 2;
         const oLeft = o.centerXFt - o.widthFt / 2;
         const oRight = o.centerXFt + o.widthFt / 2;
 
