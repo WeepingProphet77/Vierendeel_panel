@@ -144,14 +144,13 @@ function computeMemberLoads(
         const isAboveOpening = Math.abs(memberY - (oTop + dFt / 2)) < dFt;
         const isBelowOpening = Math.abs(memberY - (oBot - dFt / 2)) < dFt;
 
-        if (openingWithinSpan && (isAboveOpening || isBelowOpening)) {
+        if (openingWithinSpan && isBelowOpening) {
+          // Glass weight sits entirely on the sill (panel is vertical in service)
           const openingArea = o.widthFt * o.heightFt;
-          const glassLoadKips = (loading.glassWeightPsf * openingArea) / 2000; // psf * ft² = lb, /1000 = kips... wait
-          // Actually psf * ft² = lbs, /1000 = kips
-          const glassHalf = glassLoadKips / 2; // half to header, half to sill
+          const glassLoadKips = (loading.glassWeightPsf * openingArea) / 1000; // psf * ft² = lbs, /1000 = kips
           const flexSpan = member.flexibleLengthFt;
           if (flexSpan > 0) {
-            w += glassHalf / flexSpan; // distribute as uniform load over flexible span
+            w += glassLoadKips / flexSpan; // distribute as uniform load over flexible span
           }
         }
       }
@@ -798,10 +797,24 @@ export function runAnalysis(
   const appliedVertical = F_applied.filter((_, i) => i % 3 === 1).reduce((s, v) => s + v, 0);
   const equilibriumVertical = totalVerticalReaction + appliedVertical;
 
-  // Moment equilibrium about left support
-  const momentResidual = 0;
-  // This is complex to compute accurately - skip detailed moment check for now
-  // Just report the vertical residual
+  // Moment equilibrium about the left support node
+  // Find reference node: first node where restraints.dx === true
+  const refNode = nodes.find(n => n.restraints.dx)!;
+  const refX = refNode.x;
+  const refY = refNode.y;
+
+  let momentResidual = 0;
+  for (const node of nodes) {
+    const ni = nodeIndex.get(node.id)! * 3;
+    const armX = node.x - refX;
+    const armY = node.y - refY;
+    // Net unbalanced force at each DOF = reaction - applied
+    const netFx = reactions_full[ni] - F_applied[ni];
+    const netFy = reactions_full[ni + 1] - F_applied[ni + 1];
+    const netMz = reactions_full[ni + 2] - F_applied[ni + 2];
+    // Moment contribution: horizontal force × -vertical arm, vertical force × horizontal arm, moment × 1
+    momentResidual += -netFx * armY + netFy * armX + netMz;
+  }
 
   // Maximum deflection
   let maxDefl = 0;

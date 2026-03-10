@@ -221,6 +221,11 @@ export default function ResultsTab({ frameModel, results, material, selectedMemb
             <span className="text-yellow-400 ml-2">WARNING: Residual exceeds 0.1%</span>
           )}
         </div>
+        <div>Moment Residual: {results.equilibriumResidual.momentFtKips.toFixed(6)} ft-kips
+          {Math.abs(results.equilibriumResidual.momentFtKips) > 0.001 * results.totalWeight.total && (
+            <span className="text-yellow-400 ml-2">WARNING: Moment residual exceeds 0.1% of total weight</span>
+          )}
+        </div>
       </div>
     </div>
   );
