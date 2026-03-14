@@ -589,15 +589,6 @@ export function runAnalysis(
     // Total member end forces (local)
     const f_total = f_elastic.map((v, i) => v + fef_local[i]);
 
-    // DEBUG: print f_total, f_elastic, fef_local, d_local for first 2 members
-    if (member.id <= 2) {
-      console.log(`\n=== DEBUG Member ${member.id} ===`);
-      console.log(`  d_local:   [${d_local.map(v => v.toFixed(8)).join(', ')}]`);
-      console.log(`  f_elastic: [${f_elastic.map(v => v.toFixed(6)).join(', ')}]`);
-      console.log(`  fef_local: [${fef_local.map(v => v.toFixed(6)).join(', ')}]`);
-      console.log(`  f_total:   [${f_total.map(v => v.toFixed(6)).join(', ')}]`);
-    }
-
     // f_total: [Axial_start, Shear_start, Moment_start, Axial_end, Shear_end, Moment_end]
     // Convention: positive axial = tension, positive shear = +y local, positive moment = CCW
 
@@ -633,7 +624,11 @@ export function runAnalysis(
       const a_weight = unitWeightKcf * bFt * dFt * a_off;
 
       V_face_start = V_start - a_weight;
-      M_face_start = M_start + V_face_start * a_off;
+      // In the stiffness method, f_total[2] (M_start) is positive-CCW, which is
+      // opposite to the beam internal moment convention (positive = sagging).
+      // The internal moment at the start node = -M_start.  Propagating outward
+      // through the rigid zone: M_face = -M_start + V_face * a_off.
+      M_face_start = -M_start + V_face_start * a_off;
 
       // End face from equilibrium of flexible span
       V_face_end = V_face_start - w * Lf;
@@ -641,9 +636,13 @@ export function runAnalysis(
     } else {
       // Vertical members: no transverse UDL, no rigid zone weight issue
       V_face_start = V_start;
-      M_face_start = M_start + V_start * a_off;
+      // Same sign correction as horizontal: internal moment = -f_total[2]
+      M_face_start = -M_start + V_start * a_off;
       V_face_end = f_total[4];
-      M_face_end = f_total[5] - f_total[4] * b_off;
+      // End face: M_beam(L) = f_total[5] (same sign in beam convention at end).
+      // Propagating inward: M_face = f_total[5] + f_total[4] * b_off
+      // (since f[1] = -f[4] for no transverse load, M(L-b) = f[5] - f[1]*b = f[5] + f[4]*b)
+      M_face_end = f_total[5] + f_total[4] * b_off;
     }
 
     // Compute peak moment in the flexible span for horizontal members with UDL.
