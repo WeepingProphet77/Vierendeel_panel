@@ -590,10 +590,12 @@ export function runAnalysis(
     const f_total = f_elastic.map((v, i) => v + fef_local[i]);
 
     // f_total: [Axial_start, Shear_start, Moment_start, Axial_end, Shear_end, Moment_end]
-    // Convention: positive axial = tension, positive shear = +y local, positive moment = CCW
+    // DSM convention: positive shear = +y local, positive moment = CCW
+    // For axial, f_total[0] > 0 means compression (force in +x on the member at the start node).
+    // Internal axial force (tension +) = -f_total[0], analogous to M_internal = -f_total[2].
 
     // Forces at node centerlines
-    const P_start = f_total[0]; // axial at start node (tension +)
+    const P_start = -f_total[0]; // internal axial force (tension +)
     const V_start = f_total[1]; // shear at start node (includes lumped rigid zone weight)
     const M_start = f_total[2]; // moment at start node (ft-kips)
 
