@@ -640,9 +640,9 @@ export function runAnalysis(
       M_face_start = -M_start + V_start * a_off;
       V_face_end = f_total[4];
       // End face: M_beam(L) = f_total[5] (same sign in beam convention at end).
-      // Propagating inward: M_face = f_total[5] + f_total[4] * b_off
-      // (since f[1] = -f[4] for no transverse load, M(L-b) = f[5] - f[1]*b = f[5] + f[4]*b)
-      M_face_end = f_total[5] + f_total[4] * b_off;
+      // Propagating inward from end node to face (distance b_off):
+      // M_face_end = f_total[5] - V_face_end * b_off
+      M_face_end = f_total[5] - f_total[4] * b_off;
     }
 
     // Compute peak moment in the flexible span for horizontal members with UDL.
@@ -650,13 +650,17 @@ export function runAnalysis(
     // Peak occurs where dM/dx = 0 => x_flex = V_face_start / w (if V changes sign in the span)
     let maxMomentFtKips: number;
     let maxMomentLocationFt: number;
+    // midspanPeakFtKips: the true interior parabolic peak (for maxSpan stress),
+    // separate from the governing |M| which may be a face moment.
+    let midspanPeakFtKips: number | null = null;
 
     if (member.orientation === 'horizontal' && Math.abs(w) > 1e-12) {
       const x_peak_flex = V_face_start / w; // distance from start face where V = 0
       if (x_peak_flex > 0 && x_peak_flex < Lf) {
         // Peak is within the flexible span
         const M_peak = M_face_start + V_face_start * x_peak_flex - w * x_peak_flex * x_peak_flex / 2;
-        // Compare with face moments to find the true max
+        midspanPeakFtKips = M_peak;
+        // Compare with face moments to find the governing max |M| for design
         const moments = [
           { m: M_face_start, loc: a_off },
           { m: M_face_end, loc: a_off + Lf },
@@ -728,7 +732,9 @@ export function runAnalysis(
 
     const startFace = computeFaceStress(M_face_start);
     const endFace = computeFaceStress(M_face_end);
-    const maxSpan = computeFaceStress(maxMomentFtKips);
+    // Use the true midspan peak for maxSpan stress when it exists,
+    // otherwise fall back to the governing moment (which is a face moment).
+    const maxSpan = computeFaceStress(midspanPeakFtKips !== null ? midspanPeakFtKips : maxMomentFtKips);
 
     // Governing stresses across all critical sections
     const governingTensilePsi = Math.max(startFace.maxTensilePsi, endFace.maxTensilePsi, maxSpan.maxTensilePsi);

@@ -412,33 +412,21 @@ export function generateFrameModel(
     const supportNode = getOrCreateNode(supportXFt, bottomStripY, restraints);
 
     // Case 2: Support is within a pier's rigid zone (but not at centerline)
-    // Add a rigid-link member from pier centerline to support (zero rigid offsets;
-    // the short length + full cross-section makes it naturally very stiff)
+    // The entire pier width is a rigid zone, so apply the support restraint
+    // directly to the pier centerline node. The rigid offset already models
+    // the rigid zone — no flexible link member should be created here.
     const containingPier = pierXRanges.find(p => supportXFt >= p.left - 0.001 && supportXFt <= p.right + 0.001);
     if (containingPier) {
       const pierCx = (containingPier.left + containingPier.right) / 2;
       const pierNode = nodeMap.get(`${pierCx.toFixed(6)},${bottomStripY.toFixed(6)}`);
-      if (pierNode && pierNode.id !== supportNode.id) {
-        const dist = Math.abs(supportXFt - pierCx);
-        const [startId, endId] = supportXFt < pierCx
-          ? [supportNode.id, pierNode.id]
-          : [pierNode.id, supportNode.id];
-        members.push({
-          id: memberIdCounter++,
-          label: `${label} Rigid Link`,
-          startNodeId: startId,
-          endNodeId: endId,
-          centerlineLengthFt: dist,
-          rigidOffsetStartFt: 0,
-          rigidOffsetEndFt: 0,
-          flexibleLengthFt: dist,
-          thicknessIn: defaultThicknessIn,
-          thicknessOverridden: false,
-          depthIn: bottomStripDepthIn,
-          areaIn2: defaultThicknessIn * bottomStripDepthIn,
-          inertiaIn4: defaultThicknessIn * Math.pow(bottomStripDepthIn, 3) / 12,
-          orientation: 'horizontal',
-        });
+      if (pierNode) {
+        pierNode.restraints.dx = pierNode.restraints.dx || restraints.dx;
+        pierNode.restraints.dy = pierNode.restraints.dy || restraints.dy;
+        pierNode.restraints.rz = pierNode.restraints.rz || restraints.rz;
+
+        // Remove the support node if we created one separate from the pier node
+        const idx = nodes.indexOf(supportNode);
+        if (idx >= 0 && supportNode.id !== pierNode.id) nodes.splice(idx, 1);
         return;
       }
     }
